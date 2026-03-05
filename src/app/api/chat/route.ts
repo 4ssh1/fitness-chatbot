@@ -25,7 +25,8 @@ export async function POST(req: NextRequest) {
       isNewUserId = true;
     }
 
-    const stream = await createChatStream({
+    // Get chat response as string (not stream)
+    const chatResponse = await createChatStream({
       prompt,
       history,
       userGender,
@@ -33,14 +34,16 @@ export async function POST(req: NextRequest) {
       externalUserId: userId,
     });
 
-    const res = new NextResponse(stream, {
-      headers: {
-        "Content-Type": "text/plain; charset=utf-8",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "X-Content-Type-Options": "nosniff",
-      },
-    });
+    // If createChatStream returns a stream, you need to update it to return a string or JSON object
+    // For now, assume it returns a string response
+
+    const responseBody = {
+      response: chatResponse,
+      userId,
+      isNewUserId,
+    };
+
+    const res = NextResponse.json(responseBody);
 
     if (isNewUserId) {
       res.cookies.set("userId", userId, {
