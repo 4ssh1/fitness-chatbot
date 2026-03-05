@@ -1,28 +1,86 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --color-naija-purple: #4A148C;
+    --color-naija-magenta: #E91E63;
+    --color-naija-yellow: #FFD600;
+    --color-naija-dark: #1A1A1A;
+    --color-naija-light: #FFD600;
+    --font-heading: 'Dela Gothic One', cursive;
+    --font-body: 'DM Sans', sans-serif;
+    --animation-bounce-slow: bounce 3s infinite;
+  }
+  body {
+    font-family: var(--font-body);
+    background-color: #ffffff;
+    color: var(--color-naija-dark);
+    overflow-x: hidden;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  .bg-naija-purple {
+    background-color: var(--color-naija-purple);
+  }
+  .bg-naija-magenta {
+    background-color: var(--color-naija-magenta);
+  }
+  .bg-naija-yellow {
+    background-color: var(--color-naija-yellow);
+  }
+  .bg-naija-dark {
+    background-color: var(--color-naija-dark);
+  }
+  .bg-naija-light {
+    background-color: var(--color-naija-light);
+  }
+  .text-naija-purple {
+    color: var(--color-naija-purple);
+  }
+  .text-naija-magenta {
+    color: var(--color-naija-magenta);
+  }
+  .text-naija-yellow {
+    color: var(--color-naija-yellow);
+  }
+  .text-naija-dark {
+    color: var(--color-naija-dark);
+  }
+  .text-naija-light {
+    color: var(--color-naija-light);
+  }
+  .font-heading {
+    font-family: var(--font-heading);
+  }
+  .font-body {
+    font-family: var(--font-body);
+  }
+  .animate-bounce-slow {
+    animation: var(--animation-bounce-slow);
+  }
+}
+
+@layer utilities {
+  .clip-diagonal-bottom {
+    clip-path: polygon(0 0, 100% 0, 100% 90%, 0 100%);
+  }
+  .clip-diagonal-top {
+    clip-path: polygon(0 10%, 100% 0, 100% 100%, 0 100%);
+  }
+  .clip-diagonal-both {
+    clip-path: polygon(0 10%, 100% 0, 100% 90%, 0 100%);
+  }
+  .text-shadow-bold {
+    text-shadow: 4px 4px 0px rgba(0,0,0,0.2);
+  }
+  .box-shadow-bold {
+    box-shadow: 8px 8px 0px rgba(0,0,0,1);
+  }
+  .box-shadow-bold-hover {
+    box-shadow: 12px 12px 0px rgba(0,0,0,1);
+  }
 }

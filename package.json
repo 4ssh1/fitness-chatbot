@@ -1,5 +1,5 @@
 {
-  "name": "naijafit-chatbox",
+  "name": "GbeBody-chatbox",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -14,12 +14,13 @@
     "@prisma/client": "^7.1.0",
     "@vercel/postgres": "^0.10.0",
     "dotenv": "^17.2.3",
-    "lucide-react": "^0.554.0",
-    "next": "16.0.3",
+    "framer-motion": "^12.35.0",
+    "next": "^16.1.6",
     "next-auth": "^4.24.13",
     "pg": "^8.16.3",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "react-icons": "^5.6.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -28,9 +29,10 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
+    "baseline-browser-mapping": "^2.10.0",
     "eslint": "^9",
     "eslint-config-next": "16.0.3",
-    "prisma": "^7.1.0",
+    "prisma": "^6.19.2",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5"

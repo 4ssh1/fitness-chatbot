@@ -21,7 +21,7 @@ export default function ChatInput({ value, onChange, onSend, disabled }: Props) 
       <textarea
         className="w-full rounded-md border border-slate-700 bg-slate-950/60 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
         rows={3}
-        placeholder="Type your question for NaijaFit Coach..."
+        placeholder="Type your question for GbeBody Coach..."
         value={value}
         onChange={(e) => onChange(e.target.value)}
       />

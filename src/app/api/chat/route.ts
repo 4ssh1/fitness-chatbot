@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     status: "ok",
-    message: "NaijaFit Chat API is running",
+    message: "GbeBody Chat API is running",
     model: "gemini-2.0-flash-exp",
   });
 }

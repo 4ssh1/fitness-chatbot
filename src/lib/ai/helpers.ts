@@ -57,7 +57,7 @@ export function buildMessages(
     },
     {
       role: "model",
-      parts: [{ text: "Understood! I am NaijaFit Coach and will follow these guidelines exactly." }],
+      parts: [{ text: "Understood! I am GbeBody Coach and will follow these guidelines exactly." }],
     },
     ...history.map((msg) => ({
       role: msg.role === "user" ? "user" : "model",
