@@ -1,4 +1,4 @@
-import { buildContextPrompt, buildMessages, detectGender } from "../ai/helpers";
+import { buildContextPrompt, buildMessages, detectGender } from "../helpers";
 import { createOrGetUserByExternalId, getUserByExternalId, updateUserGender } from "./userService";
 import { getOrCreateConversation } from "./conversationService";
 import { saveMessage } from "./messageService";

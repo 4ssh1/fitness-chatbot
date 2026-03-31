@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createChatStream } from "@/lib/services/chatService";
+import { createChatStream } from "@/services/chatService";
 import { HistoryItem } from "@/types/chat";
 
 export async function POST(req: NextRequest) {

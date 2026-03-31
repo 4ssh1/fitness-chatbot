@@ -12,7 +12,6 @@ export default function LoginPage() {
     }
   return (
     <div className="min-h-screen bg-naija-light flex flex-col justify-center items-center p-4 selection:bg-naija-magenta selection:text-white relative overflow-hidden">
-      {/* Decorative background elements */}
       <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-naija-magenta rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-naija-yellow rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
 

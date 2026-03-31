@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 @layer base {
   :root {
@@ -16,9 +17,48 @@
     background-color: #ffffff;
     color: var(--color-naija-dark);
     overflow-x: hidden;
+    width: 100%;
+    box-sizing: border-box;
   }
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-heading);
+  }
+
+  .prose {
+    --tw-prose-pre-bg: #1e1e1e;
+    --tw-prose-th-borders: var(--color-prose-borders);
+    --tw-prose-td-borders: var(--color-prose-borders);
+  }
+
+  /* Specific overrides for tables and inline code */
+  .prose table {
+    width: 100%;
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+    border-collapse: collapse;
+  }
+
+  .prose thead th {
+    background-color: var(--tw-prose-invert-bg, rgba(255, 255, 255, 0.05));
+    padding: 0.5rem;
+    border: 1px solid var(--tw-prose-borders);
+  }
+
+  .prose tbody td {
+    padding: 0.5rem;
+    border: 1px solid var(--tw-prose-borders);
+  }
+
+  .prose :not(pre) > code {
+    background-color: #1e1e1e;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    font-weight: 400;
+  }
+
+  .prose :not(pre) > code::before,
+  .prose :not(pre) > code::after {
+    content: "";
   }
 }
 
@@ -84,3 +124,4 @@
     box-shadow: 12px 12px 0px rgba(0,0,0,1);
   }
 }
+
