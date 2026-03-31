@@ -3,59 +3,11 @@
 import { useState, useRef, useEffect } from "react";
 import { IoSend } from "react-icons/io5";
 import { AiOutlineLoading3Quarters } from "react-icons/ai";
+import { FaMicrophone } from "react-icons/fa";
 import { ChatMessage } from "@/components/chat/Message";
 import { TypingIndicator } from "@/components/chat/Indicator";
 import { QuickPrompts } from "@/components/chat/QuickPrompts";
 import { generateFitnessResponse } from "@/lib/ai";
-import { FaMicrophone } from "react-icons/fa";
-
-function Textarea({ value, onChange, onKeyDown, placeholder, rows, inputRef }: {
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
-  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
-  placeholder: string;
-  rows: number;
-  inputRef: React.Ref<HTMLTextAreaElement>;
-}) {
-  return (
-    <div className="relative flex-1">
-      <textarea
-        ref={inputRef}
-        value={value}
-        onChange={onChange}
-        onKeyDown={onKeyDown}
-        placeholder={placeholder}
-        className="flex-1 md:max-h-40 w-full resize-none rounded-xl border bg-muted p-3 pr-10 text-[9px] sm:text-sm text-foreground outline-none transition-colors focus:border-primary"
-        rows={rows}
-      />
-      <button className="absolute right-3 top-4 md:top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-        <FaMicrophone />
-      </button>
-    </div>
-  );
-}
-
-function IconButton({ onClick, disabled, children }: {
-  onClick: () => void;
-  disabled: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="sm:size-12 size-10 shrink-0 rounded-xl bg-primary text-primary-foreground border border-primary/30 hover:bg-primary/20 disabled:opacity-40 disabled:cursor-not-allowed flex justify-center items-center transition-colors"
-      onMouseEnter={(e) => {
-        if (!disabled) e.currentTarget.style.filter = "brightness(1.15)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.filter = "none";
-      }}
-    >
-      {children}
-    </button>
-  );
-}
 
 interface Message {
   id: string;
@@ -79,14 +31,12 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
       form:     "**Form & Technique Mode** activated!\n\nI'll guide you through proper movement patterns, cues to watch for, and how to avoid injury. Which exercise or movement do you want to nail?",
     };
 
-    setMessages([
-      {
-        id: "greeting",
-        role: "assistant",
-        content: greetings[category] ?? greetings.all,
-        timestamp: new Date(),
-      },
-    ]) ;
+    setMessages([{
+      id: "greeting",
+      role: "assistant",
+      content: greetings[category] ?? greetings.all,
+      timestamp: new Date(),
+    }]);
   }, [category]);
 
   useEffect(() => {
@@ -108,17 +58,14 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
     setIsTyping(true);
 
     const responseText = await generateFitnessResponse(text.trim(), category);
-
     setIsTyping(false);
 
-    const assistantMsg: Message = {
+    setMessages((prev) => [...prev, {
       id: (Date.now() + 1).toString(),
       role: "assistant",
       content: responseText,
       timestamp: new Date(),
-    };
-
-    setMessages((prev) => [...prev, assistantMsg]);
+    }]);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -132,6 +79,7 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
 
   return (
     <div className="flex flex-col h-full">
+      {/* Messages */}
       <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-2">
         {messages.map((msg) => (
           <ChatMessage key={msg.id} message={msg} />
@@ -146,40 +94,47 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
       )}
 
       {/* Input area */}
-      <div className="border-t border-border bg-card/50 backdrop-blur-sm px-4 py-3">
+      <div className="border-t border-border bg-card/50 backdrop-blur-sm px-3 sm:px-4 py-3">
         <div className="flex items-end gap-2 max-w-3xl mx-auto">
-          <div className="flex-1">
-            <Textarea
-              inputRef={textareaRef}
+
+          {/* Textarea + mic in one pill */}
+          <div className="flex flex-1 items-end gap-1 rounded-xl border border-border bg-muted focus-within:border-primary transition-colors">
+            <textarea
+              ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask about workouts, nutrition, technique…"
               rows={1}
+              className="flex-1 resize-none bg-transparent px-3 py-3 text-[9px] sm:text-sm text-foreground outline-none sm:max-h-40 placeholder:text-muted-foreground"
             />
+            {/* Mic button — sits at the bottom of the pill, aligned with send */}
+            <button
+              type="button"
+              className="shrink-0 flex items-center justify-center w-9 h-9 mb-1.5 mr-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+              aria-label="Voice input"
+            >
+              <FaMicrophone className="size-3.5 sm:size-4" />
+            </button>
           </div>
-          <IconButton
+
+          {/* Send button */}
+          <button
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || isTyping}
+            className="shrink-0 flex items-center justify-center size-10 sm:size-11 mb-0.5 rounded-xl bg-primary text-primary-foreground border border-primary/30 transition-colors hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {isTyping ? (
-              <AiOutlineLoading3Quarters
-                style={{ animation: "spin 0.8s linear infinite" }}
-              />
+              <AiOutlineLoading3Quarters className="size-4 animate-spin" />
             ) : (
-              <IoSend />
+              <IoSend className="size-4" />
             )}
-          </IconButton>
+          </button>
         </div>
-        <p className="text-center text-muted-foreground text-[9px] sm:text-xs mt-4 sm:mt-2">
+
+        <p className="text-center text-muted-foreground text-[9px] sm:text-xs mt-2">
           Gbebody AI can make mistakes. Consult a professional for medical or dietary advice.
         </p>
-        <style>{`
-          @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
-          }
-        `}</style>
       </div>
     </div>
   );
