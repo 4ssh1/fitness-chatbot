@@ -14,15 +14,7 @@ const Category = () => {
 
   const handleCategoryChange = (cat: CategoryType) => {
     setCategory(cat);
-    setMobileSidebarOpen(false); // Close mobile sidebar on category change
-  };
-
-  const toggleSidebar = () => {
-    setSidebarCollapsed(!sidebarCollapsed);
-  };
-
-  const toggleMobileSidebar = () => {
-    setMobileSidebarOpen(!mobileSidebarOpen);
+    setMobileSidebarOpen(false);
   };
 
   return (
@@ -31,7 +23,7 @@ const Category = () => {
       {mobileSidebarOpen && (
         <div
           className="fixed inset-0 bg-black/60 z-40 lg:hidden"
-          onClick={toggleMobileSidebar}
+          onClick={() => setMobileSidebarOpen(false)}
         />
       )}
 
@@ -45,7 +37,8 @@ const Category = () => {
           activeCategory={category}
           onCategoryChange={handleCategoryChange}
           collapsed={sidebarCollapsed}
-          onToggle={toggleSidebar}
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          onMobileClose={() => setMobileSidebarOpen(false)}
         />
       </div>
 
@@ -54,7 +47,7 @@ const Category = () => {
         {/* Mobile Header */}
         <div className="h-14 flex items-center px-3 border-b border-border shrink-0 lg:hidden">
           <button
-            onClick={toggleMobileSidebar}
+            onClick={() => setMobileSidebarOpen(true)}
             className="h-9 w-9 rounded-md flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground"
           >
             <FaBars className="h-5 w-5" />
@@ -71,4 +64,3 @@ const Category = () => {
 };
 
 export default Category;
-

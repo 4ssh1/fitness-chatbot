@@ -1,4 +1,4 @@
-import { FaDumbbell, FaUtensils, FaWalking, FaComment, FaBolt, FaPlus, FaChevronLeft } from "react-icons/fa";
+import { FaDumbbell, FaUtensils, FaWalking, FaComment, FaBolt, FaPlus, FaChevronLeft, FaTimes } from "react-icons/fa";
 import { type CategoryType } from "./Category";
 
 interface FitnessSidebarProps {
@@ -6,69 +6,94 @@ interface FitnessSidebarProps {
   onCategoryChange: (category: CategoryType) => void;
   collapsed: boolean;
   onToggle: () => void;
+  onMobileClose: () => void;
 }
 
-const categories: {id: CategoryType, label: string, icon: any}[] = [
-  { id: "all", label: "All Topics", icon: FaComment },
-  { id: "food", label: "Nutrition", icon: FaUtensils },
-  { id: "workouts", label: "Workouts", icon: FaDumbbell },
-  { id: "form", label: "Form & Technique", icon: FaWalking },
+const categories: { id: CategoryType; label: string; icon: any }[] = [
+  { id: "all",      label: "All Topics",      icon: FaComment  },
+  { id: "food",     label: "Nutrition",        icon: FaUtensils },
+  { id: "workouts", label: "Workouts",         icon: FaDumbbell },
+  { id: "form",     label: "Form & Technique", icon: FaWalking  },
 ];
 
-export function FitnessSidebar({ activeCategory, onCategoryChange, collapsed, onToggle }: FitnessSidebarProps) {
+export function FitnessSidebar({
+  activeCategory,
+  onCategoryChange,
+  collapsed,
+  onToggle,
+  onMobileClose,
+}: FitnessSidebarProps) {
+  // On mobile: never collapsed. On desktop: respect the prop.
+  const isCollapsed = collapsed; // only visually applied at lg via classes
+
   return (
     <aside
-      className={`h-screen flex flex-col border-r border-border bg-card transition-all duration-300 shrink-0 ${
-        collapsed ? "w-16" : "w-64"
+      className={`h-screen flex flex-col border-r border-border bg-black transition-all duration-300 shrink-0 w-64 ${
+        isCollapsed ? "md:w-12" : "md:w-64"
       }`}
     >
       {/* Header */}
-      <div className="h-14 flex items-center gap-3 px-1 border-b border-border shrink-0">
-        <div className="size-5 bg-naija-yellow rounded-full flex items-center justify-center text-xs border-2 border-naija-dark">
-          🤖
+      <div className={`h-14 flex items-center border-b border-border shrink-0 ${
+        isCollapsed ? "md:justify-center px-3 md:px-0" : "px-3"
+      }`}>
+        
+        {/* Title: always show on mobile, hide on desktop when collapsed */}
+        <div className={`flex-1 min-w-0 ${isCollapsed ? "md:hidden" : ""}`}>
+          <h1 className="font-display text-lg font-bold leading-none text-gradient">Gbebody AI</h1>
+          <p className="text-[10px] text-muted-foreground">Fitness Assistant</p>
         </div>
-        {!collapsed && (
-          <div className="flex-1 min-w-0">
-            <h1 className="font-display text-lg font-bold leading-none text-gradient">Gbebody AI</h1>
-            <p className="text-[10px] text-muted-foreground">Fitness Assistant</p>
-          </div>
-        )}
+
+        {/* X — mobile only */}
+        <button
+          onClick={onMobileClose}
+          className="md:hidden h-7 w-7 shrink-0 rounded-md flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+          aria-label="Close sidebar"
+        >
+          <FaTimes className="size-3.5" />
+        </button>
+
+        {/* Chevron — desktop only */}
         <button
           onClick={onToggle}
-          className="h-7 w-7 shrink-0 rounded-md flex items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+          className="hidden md:flex h-7 w-7 shrink-0 rounded-md items-center justify-center hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+          aria-label="Toggle sidebar"
         >
-          <FaChevronLeft className={`size-3 transition-transform ${collapsed ? "rotate-180" : ""}`} />
+          <FaChevronLeft className={`size-3 transition-transform duration-300 ${isCollapsed ? "rotate-180" : ""}`} />
         </button>
       </div>
 
       {/* New chat */}
-      <div className="px-3 py-3">
+      <div className={`py-3 ${isCollapsed ? "px-3 md:px-1.5" : "px-3"}`}>
         <button
           onClick={() => onCategoryChange(activeCategory)}
-          className={`w-full flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 text-primary text-sm font-medium transition-all hover:bg-primary/20 ${
-            collapsed ? "h-10 justify-center px-0" : "h-10 px-3"
+          className={`flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 text-primary text-sm font-medium transition-all hover:bg-primary/20 h-9 ${
+            isCollapsed
+              ? "w-full px-3 md:w-9 md:justify-center md:px-0"
+              : "w-full px-3"
           }`}
         >
-          <FaPlus className="h-4 w-4 shrink-0" />
-          {!collapsed && <span>New Chat</span>}
+          <FaPlus className="h-3.5 w-3.5 shrink-0" />
+          <span className={isCollapsed ? "md:hidden" : ""}>New Chat</span>
         </button>
       </div>
 
       {/* Categories */}
-      <div className="flex-1 px-2 space-y-1">
-        {!collapsed && (
-          <p className="px-2 mb-2 text-[10px] font-display uppercase tracking-widest text-muted-foreground">
-            Categories
-          </p>
-        )}
+      <div className={`flex-1 space-y-1 ${isCollapsed ? "px-2 md:px-1.5" : "px-2"}`}>
+        <p className={`px-2 mb-2 text-[10px] font-display uppercase tracking-widest text-muted-foreground ${
+          isCollapsed ? "md:hidden" : ""
+        }`}>
+          Categories
+        </p>
         {categories.map((cat) => {
           const active = activeCategory === cat.id;
           return (
             <button
               key={cat.id}
               onClick={() => onCategoryChange(cat.id)}
-              className={`w-full flex items-center gap-3 rounded-xl text-sm transition-all duration-200 ${
-                collapsed ? "h-10 justify-center px-0" : "h-10 px-3"
+              className={`flex items-center gap-3 rounded-xl text-sm transition-all duration-200 h-9 ${
+                isCollapsed
+                  ? "w-full px-3 md:w-9 md:justify-center md:px-0"
+                  : "w-full px-3"
               } ${
                 active
                   ? "bg-primary/15 text-primary border border-primary/30"
@@ -76,21 +101,19 @@ export function FitnessSidebar({ activeCategory, onCategoryChange, collapsed, on
               }`}
             >
               <cat.icon className="h-4 w-4 shrink-0" />
-              {!collapsed && <span>{cat.label}</span>}
+              <span className={isCollapsed ? "md:hidden" : ""}>{cat.label}</span>
             </button>
           );
         })}
       </div>
 
       {/* Footer */}
-      <div className="border-t border-border px-3 py-3 shrink-0">
-        <div className={`flex items-center gap-2 ${collapsed ? "justify-center" : ""}`}>
+      <div className={`border-t border-border py-3 shrink-0 ${isCollapsed ? "px-3 md:px-0 md:flex md:justify-center" : "px-3"}`}>
+        <div className="flex items-center gap-2">
           <FaBolt className="h-4 w-4 text-primary shrink-0" />
-          {!collapsed && (
-            <span className="text-xs text-muted-foreground">
-              Powered by Gemini
-            </span>
-          )}
+          <span className={`text-xs text-muted-foreground ${isCollapsed ? "md:hidden" : ""}`}>
+            Powered by Gemini
+          </span>
         </div>
       </div>
     </aside>

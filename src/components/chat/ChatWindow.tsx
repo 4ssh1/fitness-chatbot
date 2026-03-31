@@ -7,6 +7,7 @@ import { ChatMessage } from "@/components/chat/Message";
 import { TypingIndicator } from "@/components/chat/Indicator";
 import { QuickPrompts } from "@/components/chat/QuickPrompts";
 import { generateFitnessResponse } from "@/lib/ai";
+import { FaMicrophone } from "react-icons/fa";
 
 function Textarea({ value, onChange, onKeyDown, placeholder, rows, inputRef }: {
   value: string;
@@ -17,33 +18,20 @@ function Textarea({ value, onChange, onKeyDown, placeholder, rows, inputRef }: {
   inputRef: React.Ref<HTMLTextAreaElement>;
 }) {
   return (
-    <textarea
-      ref={inputRef}
-      value={value}
-      onChange={onChange}
-      onKeyDown={onKeyDown}
-      placeholder={placeholder}
-      rows={rows}
-      style={{
-        flex: 1,
-        minHeight: 48,
-        maxHeight: 160,
-        resize: "none",
-        background: "var(--color-muted)",
-        border: "1px solid ",
-        borderRadius: 12,
-        color: "var(--color-foreground)",
-        fontSize: 14,
-        padding: "12px 14px",
-        outline: "none",
-        fontFamily: "inherit",
-        lineHeight: 1.5,
-        transition: "border-color 0.15s",
-        width: "100%",
-      }}
-      onFocus={(e) => (e.currentTarget.style.borderColor = "var(--color-primary)")}
-      onBlur={(e) => (e.currentTarget.style.borderColor = "var(--color-border)")}
-    />
+    <div className="relative flex-1">
+      <textarea
+        ref={inputRef}
+        value={value}
+        onChange={onChange}
+        onKeyDown={onKeyDown}
+        placeholder={placeholder}
+        className="flex-1 md:max-h-40 w-full resize-none rounded-xl border bg-muted p-3 pr-10 text-[9px] sm:text-sm text-foreground outline-none transition-colors focus:border-primary"
+        rows={rows}
+      />
+      <button className="absolute right-3 top-4 md:top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+        <FaMicrophone />
+      </button>
+    </div>
   );
 }
 
@@ -56,23 +44,7 @@ function IconButton({ onClick, disabled, children }: {
     <button
       onClick={onClick}
       disabled={disabled}
-      style={{
-        width: 48,
-        height: 48,
-        flexShrink: 0,
-        borderRadius: 12,
-        background: "var(--color-primary)",
-        color: "var(--color-primary-foreground)",
-        border: "none",
-        cursor: disabled ? "not-allowed" : "pointer",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        opacity: disabled ? 0.4 : 1,
-        transition: "all 0.15s ease",
-        boxShadow: disabled ? "none" : "0 0 16px rgba(99,102,241,0.4)",
-        fontSize: 18,
-      }}
+      className="sm:size-12 size-10 shrink-0 rounded-xl bg-primary text-primary-foreground border border-primary/30 hover:bg-primary/20 disabled:opacity-40 disabled:cursor-not-allowed flex justify-center items-center transition-colors"
       onMouseEnter={(e) => {
         if (!disabled) e.currentTarget.style.filter = "brightness(1.15)";
       }}
@@ -101,10 +73,10 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
 
   useEffect(() => {
     const greetings = {
-      all:      "Hey! I'm **Gbebody AI** — your personal fitness assistant 🔥\n\nAsk me anything about **workouts**, **food & nutrition**, or **exercise form**. What's your goal today?",
-      food:     "🥗 **Nutrition Mode** activated!\n\nI can help with meal plans, macros, calorie targets, pre/post workout nutrition, and healthy recipes. What are you working towards?",
-      workouts: "💪 **Workout Mode** activated!\n\nI'll help you build programs, plan splits, track progressive overload, and choose the right exercises. What are we training today?",
-      form:     "🎯 **Form & Technique Mode** activated!\n\nI'll guide you through proper movement patterns, cues to watch for, and how to avoid injury. Which exercise or movement do you want to nail?",
+      all:      "Hey! I'm **Gbebody AI**, your personal fitness assistant 🔥\n\n What's your goal today?",
+      food:     "**Nutrition Mode** activated!\n\nI can help with meal plans, macros, calorie targets, pre/post workout nutrition, and healthy recipes. What are you working towards?",
+      workouts: "**Workout Mode** activated!\n\nI'll help you build programs, plan splits, track progressive overload, and choose the right exercises. What are we training today?",
+      form:     "**Form & Technique Mode** activated!\n\nI'll guide you through proper movement patterns, cues to watch for, and how to avoid injury. Which exercise or movement do you want to nail?",
     };
 
     setMessages([
@@ -160,7 +132,6 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
 
   return (
     <div className="flex flex-col h-full">
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-2">
         {messages.map((msg) => (
           <ChatMessage key={msg.id} message={msg} />
@@ -177,14 +148,16 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
       {/* Input area */}
       <div className="border-t border-border bg-card/50 backdrop-blur-sm px-4 py-3">
         <div className="flex items-end gap-2 max-w-3xl mx-auto">
-          <Textarea
-            inputRef={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask about workouts, nutrition, technique…"
-            rows={1}
-          />
+          <div className="flex-1">
+            <Textarea
+              inputRef={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask about workouts, nutrition, technique…"
+              rows={1}
+            />
+          </div>
           <IconButton
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || isTyping}
@@ -198,7 +171,7 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
             )}
           </IconButton>
         </div>
-        <p className="text-center text-muted-foreground text-xs mt-2">
+        <p className="text-center text-muted-foreground text-[9px] sm:text-xs mt-4 sm:mt-2">
           Gbebody AI can make mistakes. Consult a professional for medical or dietary advice.
         </p>
         <style>{`
