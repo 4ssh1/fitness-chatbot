@@ -1,12 +1,15 @@
-import db from "../db";
+import { getMongoDb } from "../lib/mongodb";
 
-export async function getOrCreateConversation(userId: number, sessionId: string) {
-  return db.conversation.upsert({
-    where: { sessionId },
-    update: {},
-    create: {
-      sessionId,
-      userId: userId.toString(),
-    },
-  });
+export async function getOrCreateConversation(
+  userId: string,
+  sessionId: string
+) {
+  const db = await getMongoDb();
+  const conversations = db.collection("conversations");
+  const result = await conversations.findOneAndUpdate(
+    { sessionId },
+    { $setOnInsert: { sessionId, userId } },
+    { upsert: true, returnDocument: "after" }
+  );
+  return result;
 }

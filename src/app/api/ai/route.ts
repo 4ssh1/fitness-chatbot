@@ -1,10 +1,11 @@
+import { NextRequest, NextResponse } from "next/server";
 import { HistoryItem } from "@/types/chat";
-import { User } from "@/generated/client";
-import { buildContextPrompt, buildMessages } from "./helpers";
+import { User } from "@/types/user";
+import { buildContextPrompt, buildMessages } from "@/lib/helpers";
 
 const GEMINI_API_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
-
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent";
+           
 function detectCategory(text: string): string {
   if (/(food|eat|meal|protein|calorie|macro|nutrition|diet|carb|fat|cook|recipe)/i.test(text))
     return "food";
@@ -15,22 +16,26 @@ function detectCategory(text: string): string {
   return "all";
 }
 
-export async function generateFitnessResponse(
-  userMessage: string,
-  category: string,
-  history: HistoryItem[] = [],
-  user?: User | null
-): Promise<string> {
+export async function POST(req: NextRequest) {
+  const { userMessage, category, history = [], user } = (await req.json()) as {
+    userMessage: string;
+    category: string;
+    history: HistoryItem[];
+    user?: User | null;
+  };
+
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
     console.error("GEMINI_API_KEY is not set.");
-    return "I'm having trouble connecting right now. Please try again shortly.";
+    return NextResponse.json(
+      { error: "Server configuration error." },
+      { status: 500 }
+    );
   }
 
   const detectedCategory = category === "all" ? detectCategory(userMessage) : category;
 
-  // Inject category context into the prompt when relevant
   const categoryHint =
     detectedCategory !== "all"
       ? `\n\nThe user is currently in ${detectedCategory.toUpperCase()} mode — prioritise responses related to ${detectedCategory}.`
@@ -55,7 +60,10 @@ export async function generateFitnessResponse(
     if (!response.ok) {
       const err = await response.json();
       console.error("Gemini API error:", err);
-      return "Something went wrong on my end. Try again in a moment!";
+      return NextResponse.json(
+        { error: "Something went wrong on the AI's end." },
+        { status: 502 }
+      );
     }
 
     const data = await response.json();
@@ -63,12 +71,18 @@ export async function generateFitnessResponse(
       data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 
     if (!text) {
-      return "I didn't get a response. Please rephrase and try again.";
+      return NextResponse.json(
+        { error: "The AI did not provide a response." },
+        { status: 502 }
+      );
     }
 
-    return text.trim();
+    return NextResponse.json({ response: text.trim() });
   } catch (error) {
     console.error("Network error calling Gemini:", error);
-    return "Network issue — check your connection and try again.";
+    return NextResponse.json(
+      { error: "Network issue calling the AI service." },
+      { status: 503 }
+    );
   }
 }

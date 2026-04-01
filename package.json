@@ -8,17 +8,26 @@
     "start": "next start",
     "lint": "eslint"
   },
+  "overrides": {
+    "@langchain/mongodb": {
+      "mongodb": "^6.5.0"
+    }
+  },
   "dependencies": {
     "@google/genai": "^1.29.1",
-    "@prisma/adapter-pg": "^7.1.0",
-    "@prisma/client": "^7.1.0",
+    "@langchain/core": "^1.1.38",
+    "@langchain/google-genai": "^2.1.26",
+    "@langchain/mongodb": "^1.1.0",
+    "@langchain/textsplitters": "^1.0.1",
     "@tailwindcss/typography": "^0.5.19",
     "@vercel/postgres": "^0.10.0",
     "dotenv": "^17.2.3",
     "framer-motion": "^12.35.0",
+    "langchain": "^1.2.39",
+    "mongodb": "^7.1.1",
     "next": "^16.1.6",
     "next-auth": "^4.24.13",
-    "pg": "^8.16.3",
+    "pdf-parse": "^2.4.5",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-icons": "^5.6.0",
@@ -34,7 +43,6 @@
     "baseline-browser-mapping": "^2.10.0",
     "eslint": "^9",
     "eslint-config-next": "16.0.3",
-    "prisma": "^6.19.2",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5"

@@ -1,6 +1,6 @@
 import { HistoryItem } from "@/types/chat";
 import { SYSTEM_PROMPT } from "./systemPrompts";
-import { User } from "@/generated/client";
+import { User } from "@/types/user";
 
 export function detectGender(message: string): "male" | "female" | null {
   const lower = message.toLowerCase();

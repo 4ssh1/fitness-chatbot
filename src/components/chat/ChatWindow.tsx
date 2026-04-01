@@ -7,7 +7,6 @@ import { FaMicrophone } from "react-icons/fa";
 import { ChatMessage } from "@/components/chat/Message";
 import { TypingIndicator } from "@/components/chat/Indicator";
 import { QuickPrompts } from "@/components/chat/QuickPrompts";
-import { generateFitnessResponse } from "@/lib/ai";
 
 interface Message {
   id: string;
@@ -57,7 +56,33 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
     setInput("");
     setIsTyping(true);
 
-    const responseText = await generateFitnessResponse(text.trim(), category);
+    const response = await fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userMessage: text.trim(),
+        category,
+        history: messages.slice(1).map(m => ({ role: m.role, content: m.content })),
+        // You might want to pass user data here if available
+        // user: userData,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      console.error("API route error:", err);
+      setIsTyping(false);
+      setMessages((prev) => [...prev, {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: "Sorry, something went wrong. Please try again.",
+        timestamp: new Date(),
+      }]);
+      return;
+    }
+
+    const data = await response.json();
+    const responseText = data.response;
     setIsTyping(false);
 
     setMessages((prev) => [...prev, {

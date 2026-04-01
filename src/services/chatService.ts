@@ -1,10 +1,12 @@
-import { buildContextPrompt, buildMessages, detectGender } from "../helpers";
-import { createOrGetUserByExternalId, getUserByExternalId, updateUserGender } from "./userService";
+import {
+  createOrGetUserByExternalId,
+  updateUserGender,
+} from "./userService";
 import { getOrCreateConversation } from "./conversationService";
 import { saveMessage } from "./messageService";
 import { HistoryItem } from "@/types/chat";
 import { MessageRole } from "./messageService";
-import { googleAI } from "../gemini";
+import { askRAG } from "./ragService";
 
 interface CreateChatStreamOptions {
   prompt: string;
@@ -22,57 +24,51 @@ export async function createChatStream({
   externalUserId,
 }: CreateChatStreamOptions): Promise<ReadableStream> {
 
-  await createOrGetUserByExternalId(externalUserId);
-  const user = await getUserByExternalId(externalUserId);
+  const user = await createOrGetUserByExternalId(externalUserId);
 
-  let finalGender = userGender;
-  if (!finalGender) {
-    finalGender = detectGender(prompt) ?? undefined;
+  if (userGender) {
+    await updateUserGender(externalUserId, userGender);
   }
-  if (finalGender) {
-    await updateUserGender(externalUserId, finalGender);
-  }
-
-  const refreshedUser = await getUserByExternalId(externalUserId);
 
   const finalSessionId = sessionId || `session_${Date.now()}`;
-  const conversation = await getOrCreateConversation(refreshedUser!.id, finalSessionId);
+  const conversationResult = await getOrCreateConversation(
+    user!._id.toString(),
+    finalSessionId
+  );
+  const conversation = conversationResult!;
 
-  await saveMessage(conversation.id, "user" as MessageRole, prompt);
+  await saveMessage(conversation._id.toString(), "user" as MessageRole, prompt);
 
-  const contextPrompt = buildContextPrompt(refreshedUser);
-  const messages = buildMessages(contextPrompt, history, prompt);
+  const chatHistory = history
+    .map((h) => `${h.role}: ${h.content}`)
+    .join("\n");
 
-  const resultPromise = googleAI.models.generateContentStream({
-    model: "gemini-2.0-flash-exp",
-    config: {
-      temperature: 0.7,
-      maxOutputTokens: 4096,
-      topP: 0.95,
-      topK: 40,
-    },
-    contents: messages,
-  } as any); // cast because types may differ slightly between versions
+  const ragStream = await askRAG(prompt, chatHistory);
 
   let fullResponse = "";
 
-  const stream = new ReadableStream({
+  return new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
+      const reader = ragStream.getReader();
+      const decoder = new TextDecoder();
 
       try {
-        const result = await resultPromise;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        for await (const chunk of result as any) {
-          const text = (chunk as any).text as string;
-          if (text) {
-            fullResponse += text;
-            controller.enqueue(encoder.encode(text));
-          }
+          const chunk = decoder.decode(value);
+          fullResponse += chunk;
+          controller.enqueue(encoder.encode(chunk));
         }
 
         if (fullResponse.trim()) {
-          await saveMessage(conversation.id, "assistant" as MessageRole, fullResponse);
+          await saveMessage(
+            conversation._id.toString(),
+            "assistant" as MessageRole,
+            fullResponse
+          );
         }
 
         controller.close();
@@ -82,6 +78,4 @@ export async function createChatStream({
       }
     },
   });
-
-  return stream;
 }

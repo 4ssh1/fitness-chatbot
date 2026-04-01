@@ -1,21 +1,23 @@
-import db from "../db";
+import { getMongoDb } from "../lib/mongodb";
+import { ObjectId } from "mongodb";
 
 export enum MessageRole {
   USER = "USER",
   ASSISTANT = "ASSISTANT",
-  SYSTEM = "SYSTEM"
+  SYSTEM = "SYSTEM",
 }
 
 export async function saveMessage(
-  conversationId: number,
+  conversationId: string,
   role: MessageRole,
   content: string
 ) {
-  await db.message.create({
-    data: {
-      conversationId,
-      role,
-      content,
-    },
+  const db = await getMongoDb();
+  const messages = db.collection("messages");
+  await messages.insertOne({
+    conversationId: new ObjectId(conversationId),
+    role,
+    content,
+    createdAt: new Date(),
   });
 }
