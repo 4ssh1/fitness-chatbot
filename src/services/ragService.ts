@@ -5,6 +5,8 @@ import { RunnableSequence } from "@langchain/core/runnables";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { getMongoDb } from "@/lib/mongodb";
+import fs from "fs";
+import path from "path";
 
 const embeddings = new GoogleGenerativeAIEmbeddings({
   model: "text-embedding-004", // or gemini-embedding-exp-03-07
@@ -52,9 +54,9 @@ export async function ingestKnowledgeBase() {
   });
 
   for (const file of files) {
-    // Add logic to read JSON and convert to documents
-    // For simplicity, you can convert each object to a string
-    const data = require(`@/data/${file}`);
+    const filePath = path.join(process.cwd(), "src", "data", file);
+    const fileContent = fs.readFileSync(filePath, "utf-8");
+    const data = JSON.parse(fileContent);
     const docs = Object.entries(data).map(([key, value]) => ({
       pageContent: JSON.stringify(value),
       metadata: { source: file, type: key },
