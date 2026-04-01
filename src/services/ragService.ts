@@ -14,7 +14,7 @@ const embeddings = new GoogleGenerativeAIEmbeddings({
 });
 
 const llm = new ChatGoogleGenerativeAI({
-  model: "gemini-1.5-flash", // or gemini-1.5-pro
+  model: "gemini-1.5-pro", 
   apiKey: process.env.GEMINI_API_KEY,
   temperature: 0.7,
 });
