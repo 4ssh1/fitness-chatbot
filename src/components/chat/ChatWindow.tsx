@@ -56,41 +56,74 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
     setInput("");
     setIsTyping(true);
 
-    const response = await fetch("/api/ai", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userMessage: text.trim(),
-        category,
-        history: messages.slice(1).map(m => ({ role: m.role, content: m.content })),
-        // You might want to pass user data here if available
-        // user: userData,
-      }),
-    });
-
-    if (!response.ok) {
-      const err = await response.json();
-      console.error("API route error:", err);
-      setIsTyping(false);
-      setMessages((prev) => [...prev, {
-        id: (Date.now() + 1).toString(),
+    // Placeholder assistant message that we'll stream into
+    const assistantMsgId = (Date.now() + 1).toString();
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: assistantMsgId,
         role: "assistant",
-        content: "Sorry, something went wrong. Please try again.",
+        content: "",
         timestamp: new Date(),
-      }]);
-      return;
+      },
+    ]);
+
+    try {
+      const response = await fetch("/api/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userMessage: text.trim(),
+          category,
+          history: messages.slice(1).map((m) => ({ role: m.role, content: m.content })),
+        }),
+      });
+
+      if (!response.ok || !response.body) {
+        const err = await response.json().catch(() => ({}));
+        console.error("API route error:", err);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? { ...m, content: "Sorry, something went wrong. Please try again." }
+              : m
+          )
+        );
+        setIsTyping(false);
+        return;
+      }
+
+      // Read the stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+
+        // Append chunk to the assistant message
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? { ...m, content: m.content + chunk }
+              : m
+          )
+        );
+      }
+    } catch (error) {
+      console.error("Streaming error:", error);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMsgId
+            ? { ...m, content: "Sorry, something went wrong. Please try again." }
+            : m
+        )
+      );
+    } finally {
+      setIsTyping(false);
     }
-
-    const data = await response.json();
-    const responseText = data.response;
-    setIsTyping(false);
-
-    setMessages((prev) => [...prev, {
-      id: (Date.now() + 1).toString(),
-      role: "assistant",
-      content: responseText,
-      timestamp: new Date(),
-    }]);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -109,7 +142,10 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
         {messages.map((msg) => (
           <ChatMessage key={msg.id} message={msg} />
         ))}
-        {isTyping && <TypingIndicator />}
+        {/* Only show typing indicator before first chunk arrives */}
+        {isTyping && messages[messages.length - 1]?.content === "" && (
+          <TypingIndicator />
+        )}
         <div ref={bottomRef} />
       </div>
 
@@ -133,7 +169,6 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
               rows={1}
               className="flex-1 resize-none bg-transparent px-3 py-3 text-[9px] sm:text-sm text-foreground outline-none sm:max-h-40 placeholder:text-muted-foreground"
             />
-            {/* Mic button — sits at the bottom of the pill, aligned with send */}
             <button
               type="button"
               className="shrink-0 flex items-center justify-center w-9 h-9 mb-1.5 mr-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"

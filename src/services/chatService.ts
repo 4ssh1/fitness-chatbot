@@ -14,6 +14,7 @@ interface CreateChatStreamOptions {
   userGender?: string;
   sessionId?: string;
   externalUserId: string;
+  categoryHint?: string;
 }
 
 export async function createChatStream({
@@ -22,6 +23,7 @@ export async function createChatStream({
   userGender,
   sessionId,
   externalUserId,
+  categoryHint = "",
 }: CreateChatStreamOptions): Promise<ReadableStream> {
 
   const user = await createOrGetUserByExternalId(externalUserId);
@@ -43,7 +45,7 @@ export async function createChatStream({
     .map((h) => `${h.role}: ${h.content}`)
     .join("\n");
 
-  const ragStream = await askRAG(prompt, chatHistory);
+  const ragStream = await askRAG(prompt, chatHistory, categoryHint);
 
   let fullResponse = "";
 

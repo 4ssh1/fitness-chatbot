@@ -9,12 +9,12 @@ import fs from "fs";
 import path from "path";
 
 const embeddings = new GoogleGenerativeAIEmbeddings({
-  model: "text-embedding-004", // or gemini-embedding-exp-03-07
+  model: "text-embedding-004",
   apiKey: process.env.GEMINI_API_KEY,
 });
 
 const llm = new ChatGoogleGenerativeAI({
-  model: "gemini-1.5-pro", 
+  model: "gemini-1.5-pro",
   apiKey: process.env.GEMINI_API_KEY,
   temperature: 0.7,
 });
@@ -26,7 +26,6 @@ async function getKnowledgeChunkCollection() {
 
 export async function getVectorStore() {
   const collection = await getKnowledgeChunkCollection();
-
   return new MongoDBAtlasVectorSearch(embeddings, {
     collection: collection as any,
     indexName: "vector_index",
@@ -35,12 +34,10 @@ export async function getVectorStore() {
   });
 }
 
-// Ingest your existing JSON data (run once or via admin route)
 export async function ingestKnowledgeBase() {
   const collection = await getKnowledgeChunkCollection();
-  await collection.deleteMany({}); // clear previous
+  await collection.deleteMany({});
 
-  // Example: load your data folder files
   const files = [
     "foods.json",
     "meal-plan.json",
@@ -63,7 +60,6 @@ export async function ingestKnowledgeBase() {
     }));
 
     const chunks = await splitter.splitDocuments(docs as any);
-
     const vectorStore = await getVectorStore();
     await vectorStore.addDocuments(chunks);
   }
@@ -71,7 +67,11 @@ export async function ingestKnowledgeBase() {
   console.log("✅ Knowledge base ingested into MongoDB Vector Search");
 }
 
-export async function askRAG(question: string, chatHistory: string = ""): Promise<ReadableStream> {
+export async function askRAG(
+  question: string,
+  chatHistory: string = "",
+  categoryHint: string = ""
+): Promise<ReadableStream> {
   const vectorStore = await getVectorStore();
   const retriever = vectorStore.asRetriever({ k: 6 });
 
@@ -80,6 +80,7 @@ You are a helpful fitness and nutrition assistant specialized in Nigerian foods 
 
 Use the following context to answer the user's question.
 If you don't know, say you don't have enough information.
+{categoryHint}
 
 Context: {context}
 
@@ -97,6 +98,7 @@ Answer in a friendly, motivating tone:
       },
       chatHistory: () => chatHistory,
       question: (input: { question: string }) => input.question,
+      categoryHint: () => categoryHint,
     },
     prompt,
     llm,
