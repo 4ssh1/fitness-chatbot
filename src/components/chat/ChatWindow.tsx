@@ -24,10 +24,10 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
 
   useEffect(() => {
     const greetings = {
-      all:      "Hey! I'm **Gbebody AI**, your personal fitness assistant 🔥\n\n What's your goal today?",
-      food:     "**Nutrition Mode** activated!\n\nI can help with meal plans, macros, calorie targets, pre/post workout nutrition, and healthy recipes. What are you working towards?",
+      all: "Hey! I'm **Gbebody AI**, your personal fitness assistant 🔥\n\n What's your goal today?",
+      food: "**Nutrition Mode** activated!\n\nI can help with meal plans, macros, calorie targets, pre/post workout nutrition, and healthy recipes. What are you working towards?",
       workouts: "**Workout Mode** activated!\n\nI'll help you build programs, plan splits, track progressive overload, and choose the right exercises. What are we training today?",
-      form:     "**Form & Technique Mode** activated!\n\nI'll guide you through proper movement patterns, cues to watch for, and how to avoid injury. Which exercise or movement do you want to nail?",
+      form: "**Form & Technique Mode** activated!\n\nI'll guide you through proper movement patterns, cues to watch for, and how to avoid injury. Which exercise or movement do you want to nail?",
     };
 
     setMessages([{
@@ -145,9 +145,9 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
           }
           return <ChatMessage key={msg.id} message={msg} />;
         })}
-        
+
         {isTyping && messages[messages.length - 1]?.content === "" && (
-          <TypingIndicator />
+          <TypingIndicator category={category} />
         )}
         <div ref={bottomRef} />
       </div>

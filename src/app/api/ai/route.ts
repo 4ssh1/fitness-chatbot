@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const detectedCategory = category === "all" ? detectCategory(userMessage) : category;
     const categoryHint =
       detectedCategory !== "all"
-        ? `\n\nThe user is asking about ${detectedCategory.toUpperCase()} — prioritise responses related to ${detectedCategory}.`
+        ? `\n\nContext hint: the user is asking about ${detectedCategory} — lean towards ${detectedCategory}-related advice where relevant, but still answer the full question.`
         : "";
 
     const cookieStore = await cookies();
@@ -70,8 +70,7 @@ export async function POST(req: NextRequest) {
     if (isNewUserId) {
       response.headers.append(
         "Set-Cookie",
-        `userId=${userId}; Max-Age=${60 * 60 * 24 * 365}; Path=/; HttpOnly; SameSite=Lax${
-          process.env.NODE_ENV === "production" ? "; Secure" : ""
+        `userId=${userId}; Max-Age=${60 * 60 * 24 * 365}; Path=/; HttpOnly; SameSite=Lax${process.env.NODE_ENV === "production" ? "; Secure" : ""
         }`
       );
     }
