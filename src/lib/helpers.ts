@@ -1,7 +1,3 @@
-import { HistoryItem } from "@/types/chat";
-import { SYSTEM_PROMPT } from "./systemPrompts";
-import { User } from "@/types/user";
-
 export function detectGender(message: string): "male" | "female" | null {
   const lower = message.toLowerCase();
 
@@ -28,44 +24,3 @@ export function detectGender(message: string): "male" | "female" | null {
   return null;
 }
 
-export function buildContextPrompt(user?: User | null): string {
-  let contextPrompt = SYSTEM_PROMPT;
-
-  if (user?.gender) {
-    contextPrompt += `\n\nUSER GENDER: ${user.gender}`;
-    contextPrompt += `\nAdjust your advice specifically for ${
-      user.gender === "male" ? "males" : "females"
-    }.`;
-  }
-
-  if (user?.fitnessLevel) {
-    contextPrompt += `\nUSER FITNESS LEVEL: ${user.fitnessLevel}`;
-  }
-
-  return contextPrompt;
-}
-
-export function buildMessages(
-  contextPrompt: string,
-  history: HistoryItem[],
-  prompt: string
-) {
-  return [
-    {
-      role: "user",
-      parts: [{ text: contextPrompt }],
-    },
-    {
-      role: "model",
-      parts: [{ text: "Understood! I am GbeBody Coach and will follow these guidelines exactly." }],
-    },
-    ...history.map((msg) => ({
-      role: msg.role === "user" ? "user" : "model",
-      parts: [{ text: msg.content }],
-    })),
-    {
-      role: "user",
-      parts: [{ text: prompt }],
-    },
-  ];
-}

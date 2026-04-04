@@ -25,21 +25,18 @@ export async function createChatStream({
   externalUserId,
   categoryHint = "",
 }: CreateChatStreamOptions): Promise<ReadableStream> {
-
   const user = await createOrGetUserByExternalId(externalUserId);
 
-  if (userGender) {
-    await updateUserGender(externalUserId, userGender);
-  }
-
   const finalSessionId = sessionId || `session_${Date.now()}`;
-  const conversationResult = await getOrCreateConversation(
-    user!._id.toString(),
-    finalSessionId
-  );
-  const conversation = conversationResult!;
 
-  await saveMessage(conversation._id.toString(), "user" as MessageRole, prompt);
+  const [conversationResult] = await Promise.all([
+    getOrCreateConversation(user!._id.toString(), finalSessionId),
+    userGender ? updateUserGender(externalUserId, userGender) : Promise.resolve(),
+  ]);
+
+  const conversation = conversationResult!;
+  // not await because we want to start streaming immediately, we'll save the user message after streaming completes
+  saveMessage(conversation._id.toString(), "user" as MessageRole, prompt);
 
   const chatHistory = history
     .map((h) => `${h.role}: ${h.content}`)
