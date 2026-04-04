@@ -9,12 +9,12 @@ import fs from "fs";
 import path from "path";
 
 const embeddings = new GoogleGenerativeAIEmbeddings({
-  model: "text-embedding-004",
+  model: "gemini-embedding-001",
   apiKey: process.env.GEMINI_API_KEY,
 });
 
 const llm = new ChatGoogleGenerativeAI({
-  model: "gemini-1.5-pro",
+  model: "gemini-2.5-flash",
   apiKey: process.env.GEMINI_API_KEY,
   temperature: 0.7,
 });
@@ -24,14 +24,22 @@ async function getKnowledgeChunkCollection() {
   return db.collection(process.env.MONGODB_COLLECTION_NAME || "knowledge_chunks");
 }
 
+let cachedVectorStore: MongoDBAtlasVectorSearch | null = null;
+
 export async function getVectorStore() {
+  if (cachedVectorStore) {
+    return cachedVectorStore;
+  }
+
   const collection = await getKnowledgeChunkCollection();
-  return new MongoDBAtlasVectorSearch(embeddings, {
+  cachedVectorStore = new MongoDBAtlasVectorSearch(embeddings, {
     collection: collection as any,
     indexName: "vector_index",
     textKey: "text",
     embeddingKey: "embedding",
   });
+
+  return cachedVectorStore;
 }
 
 export async function ingestKnowledgeBase() {
@@ -73,7 +81,7 @@ export async function askRAG(
   categoryHint: string = ""
 ): Promise<ReadableStream> {
   const vectorStore = await getVectorStore();
-  const retriever = vectorStore.asRetriever({ k: 6 });
+  const retriever = vectorStore.asRetriever({ k: 4 });
 
   const prompt = PromptTemplate.fromTemplate(`
 You are a helpful fitness and nutrition assistant specialized in Nigerian foods and workout plans.

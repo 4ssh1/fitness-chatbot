@@ -139,10 +139,13 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
     <div className="flex flex-col h-full">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-2">
-        {messages.map((msg) => (
-          <ChatMessage key={msg.id} message={msg} />
-        ))}
-        {/* Only show typing indicator before first chunk arrives */}
+        {messages.map((msg) => {
+          if (msg.role === "assistant" && msg.content === "" && isTyping) {
+            return null;
+          }
+          return <ChatMessage key={msg.id} message={msg} />;
+        })}
+        
         {isTyping && messages[messages.length - 1]?.content === "" && (
           <TypingIndicator />
         )}
