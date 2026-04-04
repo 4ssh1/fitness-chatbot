@@ -1,11 +1,12 @@
+import sanitize from "mongo-sanitize";
 import { getMongoDb } from "../lib/mongodb";
 
 export async function createOrGetUserByExternalId(userId: string) {
   const db = await getMongoDb();
   const users = db.collection("users");
   const result = await users.findOneAndUpdate(
-    { userId },
-    { $setOnInsert: { userId } },
+    { userId: sanitize(userId) }, // sanitize strips $ and . operators
+    { $setOnInsert: { userId: sanitize(userId) } },
     { upsert: true, returnDocument: "after" }
   );
   return result;
