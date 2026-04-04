@@ -1,36 +1,94 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GbeBody AI
+
+A Nigerian-context fitness chatbot built with Next.js, LangChain, Google Gemini, and MongoDB Atlas Vector Search. It answers questions about workouts, nutrition, and exercise form with Nigerian food alternatives, pidgin flavour, and gender-specific advice.
+
+---
+
+## Features
+
+- **Streaming responses**  token-by-token output via `ReadableStream`, no waiting for full completion
+- **RAG pipeline**  answers are grounded in a custom knowledge base (foods, meal plans, workouts, form guides) stored as vector embeddings in MongoDB Atlas
+- **Category routing**  four modes: All Topics, Nutrition, Workouts, Form & Technique. Auto-detection falls back to keyword matching when in "all" mode
+- **Gender-aware advice**  workout plans, calorie targets, and tone adjust based on user gender
+- **Nigerian context**  recommends locally available foods (jollof, eba, titus fish, groundnut), acknowledges budget constraints, NEPA challenges, and home workout setups
+- **Conversation persistence**  every message is saved to MongoDB with user, conversation, and message collections
+- **Rotating loading tips**  category-aware fitness tips cycle while the AI is generating
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 16 (App Router) |
+| AI Model | Google Gemini 2.5 Flash via LangChain |
+| Embeddings | `gemini-embedding-001` |
+| Vector Search | MongoDB Atlas Vector Search |
+| Database | MongoDB (users, conversations, messages, knowledge_chunks) |
+| Rate Limiting | Upstash Redis (sliding window) |
+| Validation | Zod |
+| Styling | Tailwind CSS + custom CSS variables |
+| Markdown rendering | `react-markdown` |
+
+---
+
+## Environment Variables
+
+```bash
+# Google Gemini
+GEMINI_API_KEY=
+
+# MongoDB
+DATABASE_URL=
+MONGODB_DB_NAME=rag_db
+MONGODB_COLLECTION_NAME=knowledge_chunks
+
+# Upstash Redis (rate limiting)
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+
+# App
+NEXT_PUBLIC_APP_URL=https://yourdomain.com
+NODE_ENV=production
+```
+
+---
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+# Install dependencies
+npm install
+
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### MongoDB Atlas Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Create a cluster and get your connection string (`DATABASE_URL`)
+2. Create a database named `ai_db`
+3. After ingestion, go to **Atlas Search → Create Index** on the `knowledge_chunks` collection
+4. Use this index definition:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```json
+{
+  "fields": [
+    {
+      "type": "vector",
+      "path": "embedding",
+      "numDimensions": 3072,
+      "similarity": "cosine"
+    }
+  ]
+}
+```
 
-## Learn More
+5. Name the index `anything`
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Known Limitations
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- No authentication yet  users are identified by a cookie-based anonymous ID. Auth is planned.
+- The `config.api.bodyParser` export in `route.ts` is Pages Router syntax and has no effect in App Router. The manual `content-length` check covers this instead.
+- Voice input button exists in the UI but is not yet wired up.
