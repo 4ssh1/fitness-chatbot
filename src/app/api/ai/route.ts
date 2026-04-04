@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // ✅ declare once at the top
+  // declare once at the top
   const cookieStore = await cookies();
   let userId = cookieStore.get("userId")?.value;
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0] ?? "anonymous";
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
 
     const { userMessage, category, history, userGender, sessionId } = parsed.data;
 
-    // ✅ injection check before anything else
+    // injection check before anything else
     if (isPromptInjection(userMessage)) {
       return NextResponse.json({ error: "Invalid message content." }, { status: 400 });
     }
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
         ? `\n\nContext hint: the user is asking about ${detectedCategory} — lean towards ${detectedCategory}-related advice where relevant, but still answer the full question.`
         : "";
 
-    // ✅ no redeclaration — just check if new
+    // no redeclaration — just check if new
     let isNewUserId = false;
     if (!userId) {
       userId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;

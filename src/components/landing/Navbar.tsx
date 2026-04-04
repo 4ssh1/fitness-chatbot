@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 
 export function Navbar() {
   const [isScrolled, setIsScrolled] = useState(false)
@@ -32,9 +33,7 @@ export function Navbar() {
           <span className="text-2xl md:text-3xl font-heading text-white tracking-wider">
             GbeBody AI
           </span>
-          <span className="text-2xl" role="img" aria-label="flexed bicep">
-            💪
-          </span>
+          <Image src="/favicon.png" alt="GbeBody AI favicon" width={28} height={28} className='size-10'/>
         </div>
 
         <button className="bg-naija-magenta hover:bg-naija-yellow hover:text-naija-dark text-white font-bold py-3 px-6 rounded-full transition-colors duration-300 transform hover:scale-105 box-shadow-bold border-2 border-naija-dark" onClick={()=> router.push('/get-started')}>

@@ -83,7 +83,7 @@ export function FinalCTA() {
           }}
           className="text-2xl md:text-3xl font-heading text-naija-yellow mb-12 transform -rotate-2 inline-block"
         >
-          Make we start this journey together! 🎉
+          Make we start this journey together! 
         </motion.p>
 
         <motion.div

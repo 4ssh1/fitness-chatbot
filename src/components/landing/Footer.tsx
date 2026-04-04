@@ -1,4 +1,5 @@
 import { FaGithub } from "react-icons/fa"
+import Image from "next/image"
 
 export function Footer() {
   return (
@@ -9,9 +10,7 @@ export function Footer() {
             <span className="text-2xl font-heading tracking-wider text-naija-yellow">
               GbeBody AI
             </span>
-            <span className="text-2xl" role="img" aria-label="flexed bicep">
-              💪
-            </span>
+            <Image src="/favicon.png" alt="GbeBody AI favicon" width={28} height={28} className='size-10' />
           </div>
 
           <div className="flex gap-6 font-medium">
@@ -38,7 +37,7 @@ export function Footer() {
 
         <div className="mt-12 text-center text-gray-400 font-medium border-t border-gray-800 pt-8">
           <p>
-             © {new Date().getFullYear()} GbeBody AI. All
+            © {new Date().getFullYear()} GbeBody AI. All
             rights reserved.
           </p>
         </div>

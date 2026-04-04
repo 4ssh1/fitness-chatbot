@@ -72,7 +72,7 @@ export async function ingestKnowledgeBase() {
     await vectorStore.addDocuments(chunks);
   }
 
-  console.log("✅ Knowledge base ingested into MongoDB Vector Search");
+  console.log("Knowledge base ingested into MongoDB Vector Search");
 }
 
 export async function askRAG(
