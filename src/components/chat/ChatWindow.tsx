@@ -146,7 +146,7 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
   return (
     <div className="flex flex-col h-full">
       {!session && showSignInBanner && (
-        <div className="absolute top-0 left-0 right-0 bg-naija-yellow p-4 text-center text-naija-dark font-bold flex items-center justify-center z-10">
+        <div className="absolute top-0 left-0 right-0 p-4 text-center text-naija-dark font-bold flex items-center justify-center z-10">
           <p>Sign in to save your chat history.</p>
           <button
             onClick={() => signIn()}

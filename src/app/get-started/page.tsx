@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { FaGoogle, FaFacebookF } from 'react-icons/fa'
+import { FaGoogle } from 'react-icons/fa'
 import { IoArrowBack } from 'react-icons/io5'
 import { IoArrowForward } from 'react-icons/io5'
 import { useRouter } from 'next/navigation'
@@ -61,13 +61,6 @@ export default function LoginPage() {
           >
             <FaGoogle className="md:size-5 size-3" />
             Continue with Google
-          </button>
-          <button
-            onClick={() => signIn('facebook', { callbackUrl: '/chat' })}
-            className="w-full flex items-center justify-center gap-3 bg-[#1877F2] hover:bg-[#1865F2] text-white font-bold py-3 px-6 rounded-full transition-all duration-300 border-2 border-naija-dark box-shadow-bold hover:-translate-y-0.5"
-          >
-            <FaFacebookF className="md:size-5 size-3" />
-            Continue with Facebook
           </button>
         </div>
       </motion.div>
