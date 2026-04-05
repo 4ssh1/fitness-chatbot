@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Dela_Gothic_One, DM_Sans } from "next/font/google";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route"; // adjust path
 import "./globals.css";
 import Provider from "./SessionProvider";
 import { getServerSession } from "next-auth";
@@ -24,17 +25,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function RootLayout({
-  children,
-}: Readonly<{
+export default async function RootLayout({ children }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await getServerSession();
+  const session = await getServerSession(authOptions);
   return (
     <html lang="en">
-      <body
-        className={`${delaGothicOne.variable} ${dmSans.variable} antialiased`}
-      >
+      <body className={`${delaGothicOne.variable} ${dmSans.variable} antialiased`}>
         <Provider session={session}>{children}</Provider>
       </body>
     </html>
