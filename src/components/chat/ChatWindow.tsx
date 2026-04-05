@@ -162,7 +162,7 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
           </button>
         </div>
       )}
-      <div className="flex-1 flex flex-col bg-naija-light relative">
+      <div className="flex-1 flex flex-col bg-black relative">
         {/* Messages */}
         <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-2">
           {messages.map((msg) => {
