@@ -7,6 +7,7 @@ import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { getMongoDb } from "@/lib/mongodb";
 import fs from "fs";
 import path from "path";
+import { Document } from "@langchain/core/documents";
 
 const embeddings = new GoogleGenerativeAIEmbeddings({
   model: "gemini-embedding-001",
@@ -41,6 +42,58 @@ export async function getVectorStore() {
 
   return cachedVectorStore;
 }
+
+let cachedRetriever: any = null;
+let cachedChain: RunnableSequence | null = null;
+
+async function getRetriever() {
+  if (cachedRetriever) {
+    return cachedRetriever;
+  }
+  const vectorStore = await getVectorStore();
+  cachedRetriever = vectorStore.asRetriever({ k: 4 });
+  return cachedRetriever;
+}
+
+async function getChain() {
+  if (cachedChain) {
+    return cachedChain;
+  }
+
+  const retriever = await getRetriever();
+
+  const prompt = PromptTemplate.fromTemplate(`
+You are a helpful fitness and nutrition assistant specialized in Nigerian foods and workout plans.
+
+Use the context below if it's relevant. If the context doesn't cover the question, answer from your own fitness knowledge — do NOT say you don't have enough information.
+{categoryHint}
+
+Context: {context}
+
+Chat History: {chatHistory}
+
+Question: {question}
+Answer in a friendly, motivating tone:
+`);
+
+  cachedChain = RunnableSequence.from([
+    {
+      context: async (input: { question: string; chatHistory?: string; categoryHint?: string }) => {
+        const docs = await retriever.invoke(input.question);
+        return docs.map((d: Document) => d.pageContent).join("\n\n");
+      },
+      chatHistory: (input: { question: string; chatHistory?: string; categoryHint?: string }) => input.chatHistory ?? "",
+      question: (input: { question: string; chatHistory?: string; categoryHint?: string }) => input.question,
+      categoryHint: (input: { question: string; chatHistory?: string; categoryHint?: string }) => input.categoryHint ?? "",
+    },
+    prompt,
+    llm,
+    new StringOutputParser(),
+  ]);
+
+  return cachedChain;
+}
+
 
 export async function ingestKnowledgeBase() {
   const collection = await getKnowledgeChunkCollection();
@@ -80,39 +133,13 @@ export async function askRAG(
   chatHistory: string = "",
   categoryHint: string = ""
 ): Promise<ReadableStream> {
-  const vectorStore = await getVectorStore();
-  const retriever = vectorStore.asRetriever({ k: 4 });
+  const chain = await getChain();
 
-  const prompt = PromptTemplate.fromTemplate(`
-You are a helpful fitness and nutrition assistant specialized in Nigerian foods and workout plans.
-
-Use the context below if it's relevant. If the context doesn't cover the question, answer from your own fitness knowledge — do NOT say you don't have enough information.
-{categoryHint}
-
-Context: {context}
-
-Chat History: {chatHistory}
-
-Question: {question}
-Answer in a friendly, motivating tone:
-`);
-
-  const chain = RunnableSequence.from([
-    {
-      context: async (input: { question: string }) => {
-        const docs = await retriever.invoke(input.question);
-        return docs.map((d) => d.pageContent).join("\n\n");
-      },
-      chatHistory: () => chatHistory,
-      question: (input: { question: string }) => input.question,
-      categoryHint: () => categoryHint,
-    },
-    prompt,
-    llm,
-    new StringOutputParser(),
-  ]);
-
-  const langchainStream = await chain.stream({ question });
+  const langchainStream = await chain.stream({
+    question,
+    chatHistory,
+    categoryHint,
+  });
 
   return new ReadableStream({
     async start(controller) {

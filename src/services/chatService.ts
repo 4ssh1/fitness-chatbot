@@ -25,24 +25,28 @@ export async function createChatStream({
   externalUserId,
   categoryHint = "",
 }: CreateChatStreamOptions): Promise<ReadableStream> {
-  const user = await createOrGetUserByExternalId(externalUserId);
-
   const finalSessionId = sessionId || `session_${Date.now()}`;
+  const chatHistory = history.map((h) => `${h.role}: ${h.content}`).join("\n");
 
-  const [conversationResult] = await Promise.all([
-    getOrCreateConversation(user!._id.toString(), finalSessionId),
-    userGender ? updateUserGender(externalUserId, userGender) : Promise.resolve(),
+  // Ran DB setup AND RAG in parallel so Mongo block the LLM
+  const [ragStream, conversationId] = await Promise.all([
+    askRAG(prompt, chatHistory, categoryHint),
+    (async () => {
+      const user = await createOrGetUserByExternalId(externalUserId);
+      const [conversationResult] = await Promise.all([
+        getOrCreateConversation(user!._id.toString(), finalSessionId),
+        userGender
+          ? updateUserGender(externalUserId, userGender)
+          : Promise.resolve(),
+      ]);
+      await saveMessage(
+        conversationResult!._id.toString(),
+        "user" as MessageRole,
+        prompt
+      );
+      return conversationResult!._id.toString();
+    })(),
   ]);
-
-  const conversation = conversationResult!;
-  // not await because we want to start streaming immediately, we'll save the user message after streaming completes
-  saveMessage(conversation._id.toString(), "user" as MessageRole, prompt);
-
-  const chatHistory = history
-    .map((h) => `${h.role}: ${h.content}`)
-    .join("\n");
-
-  const ragStream = await askRAG(prompt, chatHistory, categoryHint);
 
   let fullResponse = "";
 
@@ -62,11 +66,10 @@ export async function createChatStream({
           controller.enqueue(encoder.encode(chunk));
         }
 
+        // Fire and forget, don't block stream close on this
         if (fullResponse.trim()) {
-          await saveMessage(
-            conversation._id.toString(),
-            "assistant" as MessageRole,
-            fullResponse
+          saveMessage(conversationId, "assistant" as MessageRole, fullResponse).catch(
+            (err) => console.error("Failed to save assistant message:", err)
           );
         }
 
