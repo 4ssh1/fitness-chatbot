@@ -37,19 +37,26 @@ export async function createChatStream({
       if (!userId) {
         return null;
       }
-      const user = await createOrGetUserByExternalId(externalUserId);
+      const userResult = await createOrGetUserByExternalId(externalUserId);
+      const user = userResult.value;
+
+      if (!user) {
+        // Handle the case where the user is not found or created
+        return null;
+      }
+
       const [conversationResult] = await Promise.all([
-        getOrCreateConversation(user!._id.toString(), finalSessionId),
+        getOrCreateConversation(user._id.toString(), finalSessionId),
         userGender
           ? updateUserGender(externalUserId, userGender)
           : Promise.resolve(),
       ]);
       await saveMessage(
-        conversationResult!._id.toString(),
+        conversationResult.value!._id.toString(),
         "user" as MessageRole,
         prompt
       );
-      return conversationResult!._id.toString();
+      return conversationResult.value!._id.toString();
     })(),
   ]);
 
