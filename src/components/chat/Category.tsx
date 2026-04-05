@@ -12,8 +12,15 @@ const Category = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
+  const [conversationId, setConversationId] = useState(Date.now());
+
   const handleCategoryChange = (cat: CategoryType) => {
     setCategory(cat);
+    setMobileSidebarOpen(false);
+  };
+
+  const handleNewChat = () => {
+    setConversationId(Date.now());
     setMobileSidebarOpen(false);
   };
 
@@ -36,6 +43,7 @@ const Category = () => {
         <FitnessSidebar
           activeCategory={category}
           onCategoryChange={handleCategoryChange}
+          onNewChat={handleNewChat}
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
           onMobileClose={() => setMobileSidebarOpen(false)}
@@ -57,7 +65,7 @@ const Category = () => {
           </h1>
         </div>
 
-        <ChatWindow category={category} />
+        <ChatWindow key={conversationId} category={category} />
       </main>
     </div>
   );

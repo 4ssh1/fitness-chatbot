@@ -4,6 +4,7 @@ import { type CategoryType } from "./Category";
 interface FitnessSidebarProps {
   activeCategory: CategoryType;
   onCategoryChange: (category: CategoryType) => void;
+  onNewChat: () => void;
   collapsed: boolean;
   onToggle: () => void;
   onMobileClose: () => void;
@@ -19,6 +20,7 @@ const categories: { id: CategoryType; label: string; icon: any }[] = [
 export function FitnessSidebar({
   activeCategory,
   onCategoryChange,
+  onNewChat,
   collapsed,
   onToggle,
   onMobileClose,
@@ -65,7 +67,7 @@ export function FitnessSidebar({
       {/* New chat */}
       <div className={`py-3 ${isCollapsed ? "px-3 md:px-1.5" : "px-3"}`}>
         <button
-          onClick={() => onCategoryChange(activeCategory)}
+          onClick={onNewChat}
           className={`flex items-center gap-2 rounded-xl border border-primary/40 bg-primary/10 text-primary text-sm font-medium transition-all hover:bg-primary/20 h-9 ${
             isCollapsed
               ? "w-full px-3 md:w-9 md:justify-center md:px-0"
