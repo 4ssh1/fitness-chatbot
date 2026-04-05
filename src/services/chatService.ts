@@ -56,10 +56,20 @@ export async function createChatStream({
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      for await (const chunk of ragStream) {
-        controller.enqueue(encoder.encode(chunk));
+      const reader = ragStream.getReader();
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          controller.enqueue(encoder.encode(value));
+        }
+      } catch (error) {
+        console.error("Error reading from ragStream", error);
+        controller.error(error);
+      } finally {
+        reader.releaseLock();
+        controller.close();
       }
-      controller.close();
     },
   });
 
