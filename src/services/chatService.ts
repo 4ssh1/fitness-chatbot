@@ -15,6 +15,7 @@ interface CreateChatStreamOptions {
   sessionId?: string;
   externalUserId: string;
   categoryHint?: string;
+  userId?: string;
 }
 
 export async function createChatStream({
@@ -24,6 +25,7 @@ export async function createChatStream({
   sessionId,
   externalUserId,
   categoryHint = "",
+  userId,
 }: CreateChatStreamOptions): Promise<ReadableStream> {
   const finalSessionId = sessionId || `session_${Date.now()}`;
   const chatHistory = history.map((h) => `${h.role}: ${h.content}`).join("\n");
@@ -32,6 +34,9 @@ export async function createChatStream({
   const [ragStream, conversationId] = await Promise.all([
     askRAG(prompt, chatHistory, categoryHint),
     (async () => {
+      if (!userId) {
+        return null;
+      }
       const user = await createOrGetUserByExternalId(externalUserId);
       const [conversationResult] = await Promise.all([
         getOrCreateConversation(user!._id.toString(), finalSessionId),
@@ -48,36 +53,15 @@ export async function createChatStream({
     })(),
   ]);
 
-  let fullResponse = "";
-
-  return new ReadableStream({
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
     async start(controller) {
-      const encoder = new TextEncoder();
-      const reader = ragStream.getReader();
-      const decoder = new TextDecoder();
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value);
-          fullResponse += chunk;
-          controller.enqueue(encoder.encode(chunk));
-        }
-
-        // Fire and forget, don't block stream close on this
-        if (fullResponse.trim()) {
-          saveMessage(conversationId, "assistant" as MessageRole, fullResponse).catch(
-            (err) => console.error("Failed to save assistant message:", err)
-          );
-        }
-
-        controller.close();
-      } catch (error) {
-        console.error("Streaming error:", error);
-        controller.error(error);
+      for await (const chunk of ragStream) {
+        controller.enqueue(encoder.encode(chunk));
       }
+      controller.close();
     },
   });
+
+  return stream;
 }

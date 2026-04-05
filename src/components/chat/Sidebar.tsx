@@ -1,5 +1,6 @@
 import { FaDumbbell, FaUtensils, FaWalking, FaComment, FaBolt, FaPlus, FaChevronLeft, FaTimes } from "react-icons/fa";
 import { type CategoryType } from "./Category";
+import { useSession, signIn, signOut } from 'next-auth/react';
 
 interface FitnessSidebarProps {
   activeCategory: CategoryType;
@@ -25,6 +26,7 @@ export function FitnessSidebar({
   onToggle,
   onMobileClose,
 }: FitnessSidebarProps) {
+  const { data: session } = useSession()
   // On mobile: never collapsed. On desktop: respect the prop.
   const isCollapsed = collapsed; // only visually applied at lg via classes
 
@@ -117,6 +119,37 @@ export function FitnessSidebar({
             Powered by Gemini
           </span>
         </div>
+      </div>
+      <div className="mt-auto p-3 border-t border-border">
+        {session ? (
+          <div className="flex items-center gap-2">
+            <img
+              src={session.user?.image || ''}
+              alt={session.user?.name || ''}
+              className="w-8 h-8 rounded-full"
+            />
+            <div className={`flex-1 min-w-0 ${isCollapsed ? 'md:hidden' : ''}`}>
+              <p className="text-sm font-medium truncate text-white">
+                {session.user?.name}
+              </p>
+              <button
+                onClick={() => signOut()}
+                className="text-xs text-muted-foreground hover:text-white"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => signIn()}
+            className={`w-full text-white font-bold py-2 px-4 rounded-full ${
+              isCollapsed ? 'md:hidden' : ''
+            }`}
+          >
+            Sign In
+          </button>
+        )}
       </div>
     </aside>
   );

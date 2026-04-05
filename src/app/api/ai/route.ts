@@ -3,7 +3,8 @@ import { cookies } from "next/headers";
 import { createChatStream } from "@/services/chatService";
 import { ChatRequestSchema } from "@/validation/user";
 import { ratelimit } from "@/lib/rateLimit";
-
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 function detectCategory(text: string): string {
   if (/(food|eat|meal|protein|calorie|macro|nutrition|diet|carb|fat|cook|recipe)/i.test(text))
@@ -30,6 +31,7 @@ function isPromptInjection(text: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  const session = await getServerSession(authOptions);
   const origin = req.headers.get("origin");
   const allowedOrigins = [
     process.env.NEXT_PUBLIC_APP_URL,
@@ -41,7 +43,7 @@ export async function POST(req: NextRequest) {
 
   // declare once at the top
   const cookieStore = await cookies();
-  let userId = cookieStore.get("userId")?.value;
+  let userId = session?.user?.id || cookieStore.get("userId")?.value;
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0] ?? "anonymous";
   const identifier = userId ?? ip;
 
@@ -102,6 +104,7 @@ export async function POST(req: NextRequest) {
       sessionId,
       externalUserId: userId,
       categoryHint,
+      userId: session?.user?.id,
     });
 
     const response = new Response(stream, {

@@ -25,6 +25,8 @@ if (process.env.NODE_ENV === "development") {
   clientPromise = client.connect();
 }
 
+export { clientPromise };
+
 export async function getMongoDb() {
   const mongoClient = await clientPromise;
   return mongoClient.db(DB_NAME);

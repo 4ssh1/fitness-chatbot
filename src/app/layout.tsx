@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Dela_Gothic_One, DM_Sans } from "next/font/google";
 import "./globals.css";
+import Provider from "./SessionProvider";
+import { getServerSession } from "next-auth";
 
 const delaGothicOne = Dela_Gothic_One({
   subsets: ["latin"],
@@ -15,23 +17,25 @@ const dmSans = DM_Sans({
 
 export const metadata: Metadata = {
   title: "GbeBody Chatbot",
-  description: "Get tailored workouts, meal plans, and fitness tips designed for Nigerians. Whether at home or in the gym, FitNaijaGPT guides you with friendly, motivational advice, local food alternatives, and practical exercise tips, customized for your gender and goals. Stay disciplined, have fun, and crush your fitness journey",
+  description:
+    "Get tailored workouts, meal plans, and fitness tips designed for Nigerians. Whether at home or in the gym, FitNaijaGPT guides you with friendly, motivational advice, local food alternatives, and practical exercise tips, customized for your gender and goals. Stay disciplined, have fun, and crush your fitness journey",
   icons: {
     icon: "/favicon.png",
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const session = await getServerSession();
   return (
     <html lang="en">
       <body
         className={`${delaGothicOne.variable} ${dmSans.variable} antialiased`}
       >
-        {children}
+        <Provider session={session}>{children}</Provider>
       </body>
     </html>
   );

@@ -7,6 +7,8 @@ import { FaMicrophone } from "react-icons/fa";
 import { ChatMessage } from "@/components/chat/Message";
 import { TypingIndicator } from "@/components/chat/Indicator";
 import { QuickPrompts } from "@/components/chat/QuickPrompts";
+import { useSession, signIn } from 'next-auth/react';
+import { IoClose } from 'react-icons/io5';
 
 interface Message {
   id: string;
@@ -21,6 +23,8 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
   const [isTyping, setIsTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { data: session } = useSession();
+  const [showSignInBanner, setShowSignInBanner] = useState(false);
 
   useEffect(() => {
     const greetings = {
@@ -44,6 +48,10 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || isTyping) return;
+
+    if (!session) {
+      setShowSignInBanner(true);
+    }
 
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -137,67 +145,86 @@ export function ChatWindow({ category }: { category: "all" | "food" | "workouts"
 
   return (
     <div className="flex flex-col h-full">
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-2">
-        {messages.map((msg) => {
-          if (msg.role === "assistant" && msg.content === "" && isTyping) {
-            return null;
-          }
-          return <ChatMessage key={msg.id} message={msg} />;
-        })}
-
-        {isTyping && messages[messages.length - 1]?.content === "" && (
-          <TypingIndicator category={category} />
-        )}
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Quick prompts — only on fresh chat */}
-      {hasOnlyGreeting && !isTyping && (
-        <QuickPrompts category={category} onSelect={sendMessage} />
+      {!session && showSignInBanner && (
+        <div className="absolute top-0 left-0 right-0 bg-naija-yellow p-4 text-center text-naija-dark font-bold flex items-center justify-center z-10">
+          <p>Sign in to save your chat history.</p>
+          <button
+            onClick={() => signIn()}
+            className="ml-4 bg-naija-magenta text-white px-4 py-2 rounded-full"
+          >
+            Sign In
+          </button>
+          <button
+            onClick={() => setShowSignInBanner(false)}
+            className="ml-2 text-2xl"
+          >
+            <IoClose />
+          </button>
+        </div>
       )}
+      <div className="flex-1 flex flex-col bg-naija-light relative">
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-2">
+          {messages.map((msg) => {
+            if (msg.role === "assistant" && msg.content === "" && isTyping) {
+              return null;
+            }
+            return <ChatMessage key={msg.id} message={msg} />;
+          })}
 
-      {/* Input area */}
-      <div className="border-t border-border bg-card/50 backdrop-blur-sm px-3 sm:px-4 py-3">
-        <div className="flex items-end gap-2 max-w-3xl mx-auto">
+          {isTyping && messages[messages.length - 1]?.content === "" && (
+            <TypingIndicator category={category} />
+          )}
+          <div ref={bottomRef} />
+        </div>
 
-          {/* Textarea + mic in one pill */}
-          <div className="flex flex-1 items-end gap-1 rounded-xl border border-border bg-muted focus-within:border-primary transition-colors">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask about workouts, nutrition, technique…"
-              rows={1}
-              className="flex-1 resize-none bg-transparent px-3 py-3 text-[9px] sm:text-sm text-foreground outline-none sm:max-h-40 placeholder:text-muted-foreground"
-            />
+        {/* Quick prompts — only on fresh chat */}
+        {hasOnlyGreeting && !isTyping && (
+          <QuickPrompts category={category} onSelect={sendMessage} />
+        )}
+
+        {/* Input area */}
+        <div className="border-t border-border bg-card/50 backdrop-blur-sm px-3 sm:px-4 py-3">
+          <div className="flex items-end gap-2 max-w-3xl mx-auto">
+
+            {/* Textarea + mic in one pill */}
+            <div className="flex flex-1 items-end gap-1 rounded-xl border border-border bg-muted focus-within:border-primary transition-colors">
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask about workouts, nutrition, technique…"
+                rows={1}
+                className="flex-1 resize-none bg-transparent px-3 py-3 text-[9px] sm:text-sm text-foreground outline-none sm:max-h-40 placeholder:text-muted-foreground"
+              />
+              <button
+                type="button"
+                className="shrink-0 flex items-center justify-center w-9 h-9 mb-1.5 mr-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                aria-label="Voice input"
+              >
+                <FaMicrophone className="size-3.5 sm:size-4" />
+              </button>
+            </div>
+
+            {/* Send button */}
             <button
-              type="button"
-              className="shrink-0 flex items-center justify-center w-9 h-9 mb-1.5 mr-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-              aria-label="Voice input"
+              onClick={() => sendMessage(input)}
+              disabled={!input.trim() || isTyping}
+              className="shrink-0 flex items-center justify-center size-10 sm:size-11 mb-0.5 rounded-xl bg-primary text-primary-foreground border border-primary/30 transition-colors hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <FaMicrophone className="size-3.5 sm:size-4" />
+              {isTyping ? (
+                <AiOutlineLoading3Quarters className="size-4 animate-spin" />
+              ) : (
+                <IoSend className="size-4" />
+              )}
             </button>
           </div>
 
-          {/* Send button */}
-          <button
-            onClick={() => sendMessage(input)}
-            disabled={!input.trim() || isTyping}
-            className="shrink-0 flex items-center justify-center size-10 sm:size-11 mb-0.5 rounded-xl bg-primary text-primary-foreground border border-primary/30 transition-colors hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {isTyping ? (
-              <AiOutlineLoading3Quarters className="size-4 animate-spin" />
-            ) : (
-              <IoSend className="size-4" />
-            )}
-          </button>
+          <p className="text-center text-muted-foreground text-[9px] sm:text-xs mt-2">
+            Gbebody AI can make mistakes. Consult a professional for medical or dietary advice.
+          </p>
         </div>
-
-        <p className="text-center text-muted-foreground text-[9px] sm:text-xs mt-2">
-          Gbebody AI can make mistakes. Consult a professional for medical or dietary advice.
-        </p>
       </div>
     </div>
   );

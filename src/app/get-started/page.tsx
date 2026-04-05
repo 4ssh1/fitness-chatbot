@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { FaGoogle, FaFacebookF } from 'react-icons/fa'
 import { IoArrowBack } from 'react-icons/io5'
 import { useRouter } from 'next/navigation'
+import { signIn } from 'next-auth/react'
 
 export default function LoginPage() {
     const router = useRouter()
@@ -41,24 +42,24 @@ export default function LoginPage() {
             Welcome Back!
           </h1>
           <p className="text-gray-600 font-medium">
-            Ready to GbeBody? Login to continue.
+            Ready to Gbe Body? Login to continue.
           </p>
         </div>
 
         <div className="space-y-4 mb-8">
-          <button className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-50 text-naija-dark font-bold py-3 px-6 rounded-full transition-all duration-300 border-2 border-naija-dark box-shadow-bold hover:-translate-y-0.5">
-            Continue with Email
+          <button
+            onClick={() => signIn('google', { callbackUrl: '/chat' })}
+            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-50 text-naija-dark font-bold py-3 px-6 rounded-full transition-all duration-300 border-2 border-naija-dark box-shadow-bold hover:-translate-y-0.5"
+          >
             <FaGoogle className="md:size-5 size-3" />
-          </button>
-          <button className="w-full flex items-center justify-center gap-3 bg-[#1877F2] hover:bg-[#1865F2] text-white font-bold py-3 px-6 rounded-full transition-all duration-300 border-2 border-naija-dark box-shadow-bold hover:-translate-y-0.5">
-            <FaFacebookF className="md:size-5 size-3" />
-            Continue with Facebook
+            Continue with Google
           </button>
           <button
-            type="submit"
-            className="w-full bg-naija-magenta hover:bg-naija-yellow hover:text-naija-dark text-white font-bold py-2 px-6 rounded-full transition-colors duration-300 transform hover:scale-[1.02] box-shadow-bold border-2 border-naija-dark mt-4 text-lg"
+            onClick={() => signIn('facebook', { callbackUrl: '/chat' })}
+            className="w-full flex items-center justify-center gap-3 bg-[#1877F2] hover:bg-[#1865F2] text-white font-bold py-3 px-6 rounded-full transition-all duration-300 border-2 border-naija-dark box-shadow-bold hover:-translate-y-0.5"
           >
-            Let's go
+            <FaFacebookF className="md:size-5 size-3" />
+            Continue with Facebook
           </button>
         </div>
       </motion.div>
