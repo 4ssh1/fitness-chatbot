@@ -30,7 +30,7 @@ export async function createChatStream({
   const finalSessionId = sessionId || `session_${Date.now()}`;
   const chatHistory = history.map((h) => `${h.role}: ${h.content}`).join("\n");
 
-  // Ran DB setup AND RAG in parallel so Mongo block the LLM
+  // Run DB setup AND RAG in parallel so Mongo doesn't block the LLM
   const [ragStream, conversationId] = await Promise.all([
     askRAG(prompt, chatHistory, categoryHint),
     (async () => {
@@ -38,7 +38,7 @@ export async function createChatStream({
         return null;
       }
       const userResult = await createOrGetUserByExternalId(externalUserId);
-      const user = userResult.value;
+      const user = userResult?.value;
 
       if (!user) {
         // Handle the case where the user is not found or created
@@ -52,15 +52,16 @@ export async function createChatStream({
           : Promise.resolve(),
       ]);
       await saveMessage(
-        conversationResult.value!._id.toString(),
+        conversationResult?.value!._id.toString(),
         "user" as MessageRole,
         prompt
       );
-      return conversationResult.value!._id.toString();
+      return conversationResult?.value!._id.toString();
     })(),
   ]);
 
-  const encoder = new TextEncoder();
+  // ✅ FIX: forward the raw Uint8Array chunks from ragStream directly
+  // No extra encoding – ragStream already emits UTF-8 bytes
   const stream = new ReadableStream({
     async start(controller) {
       const reader = ragStream.getReader();
@@ -68,7 +69,8 @@ export async function createChatStream({
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-          controller.enqueue(encoder.encode(value));
+          // value is already a Uint8Array – just pass it through
+          controller.enqueue(value);
         }
       } catch (error) {
         console.error("Error reading from ragStream", error);

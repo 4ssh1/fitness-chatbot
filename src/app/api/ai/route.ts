@@ -64,11 +64,16 @@ export async function POST(req: NextRequest) {
 
   try {
     const contentLength = req.headers.get("content-length");
-    if (contentLength && parseInt(contentLength) > 16_000) {
+    const contentLengthNum = contentLength ? parseInt(contentLength) : 0;
+    console.log("Request content length:", contentLengthNum, "bytes");
+    
+    // Increase limit to 100KB for chat history
+    if (contentLength && parseInt(contentLength) > 100_000) {
       return NextResponse.json({ error: "Request too large" }, { status: 413 });
     }
 
     const body = await req.json();
+    console.log("Request body keys:", Object.keys(body));
     const parsed = ChatRequestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(

@@ -1,11 +1,9 @@
-import NextAuth from "next-auth"
-import GoogleProvider from "next-auth/providers/google"
-import { MongoDBAdapter } from "@next-auth/mongodb-adapter"
-import { clientPromise } from "@/lib/mongodb"
-import { AuthOptions } from "next-auth"
+import NextAuth from "next-auth";
+import GoogleProvider from "next-auth/providers/google";
+import type { AuthOptions } from "next-auth";
+import { getMongoDb } from "@/lib/mongodb";
 
 export const authOptions: AuthOptions = {
-  adapter: MongoDBAdapter(clientPromise),
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -19,15 +17,45 @@ export const authOptions: AuthOptions = {
     }),
   ],
   session: {
-    strategy: "jwt",
+    strategy: "jwt", // keep JWT strategy
   },
   pages: {
     signIn: "/get-started",
   },
   callbacks: {
+    // Called whenever a JWT is created or updated
+    async jwt({ token, account, profile }) {
+      // On initial sign-in, account and profile are available
+      if (account && profile) {
+        const db = await getMongoDb();
+        const usersCollection = db.collection("users");
+
+        const userData = {
+          email: profile.email!,
+          name: profile.name,
+          image: profile.image,
+          provider: account.provider,
+          providerAccountId: account.providerAccountId,
+          lastLogin: new Date(),
+          createdAt: new Date(),
+        };
+
+        const result = await usersCollection.findOneAndUpdate(
+          { email: profile.email },
+          { $set: userData, $setOnInsert: { createdAt: new Date() } },
+          { upsert: true, returnDocument: "after" }
+        );
+
+        // Store our internal user ID in the token
+        token.userId = result?.value?._id.toString();
+      }
+      return token;
+    },
+
+    // Add user ID to the session object
     async session({ session, token }) {
-      if (token) {
-        session.user.id = token.sub;
+      if (token.userId) {
+        session.user.id = token.userId as string;
       }
       return session;
     },
@@ -36,5 +64,4 @@ export const authOptions: AuthOptions = {
 };
 
 const handler = NextAuth(authOptions);
-
 export { handler as GET, handler as POST };
