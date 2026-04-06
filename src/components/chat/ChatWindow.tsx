@@ -25,11 +25,11 @@ export function ChatWindow({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [hasStartedReceiving, setHasStartedReceiving] = useState(false);
   const [showSignInBanner, setShowSignInBanner] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  // Holds the AbortController for the active stream so we can cancel it
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const { data: session } = useSession();
@@ -53,16 +53,11 @@ export function ChatWindow({
     ]);
   }, [category]);
 
-  // ── Auto-scroll ───────────────────────────────────────────────────────────
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
-
-  // ── Stop streaming ────────────────────────────────────────────────────────
   const stopStream = useCallback(() => {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     setIsTyping(false);
+    setHasStartedReceiving(false); // reset for next message
   }, []);
 
   // ── Send / stream message ─────────────────────────────────────────────────
@@ -70,7 +65,7 @@ export function ChatWindow({
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || isTyping) return;
-      if (trimmed.length > MAX_CHARS) return; // hard guard (UI already warns)
+      if (trimmed.length > MAX_CHARS) return;
 
       if (!session) setShowSignInBanner(true);
 
@@ -84,15 +79,18 @@ export function ChatWindow({
       setMessages((prev) => [...prev, userMsg]);
       setInput("");
       setIsTyping(true);
+      setHasStartedReceiving(false); // reset before fetch
 
-      // Placeholder assistant bubble we stream into
       const assistantMsgId = `asst_${Date.now()}`;
       setMessages((prev) => [
         ...prev,
         { id: assistantMsgId, role: "assistant", content: "", timestamp: new Date() },
       ]);
 
-      // Create a fresh AbortController for this request
+      setTimeout(() => {
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
@@ -105,12 +103,11 @@ export function ChatWindow({
             userMessage: trimmed,
             category,
             history: messages
-              .slice(1) // Exclude initial greeting
-              .slice(-10) // Only send the last 10 messages
-              .map((m) => ({ 
-                role: m.role, 
-                // Truncate content to match validation schema
-                content: m.content.slice(0, 2000) 
+              .slice(1)
+              .slice(-10)
+              .map((m) => ({
+                role: m.role,
+                content: m.content.slice(0, 2000)
               })),
           }),
         });
@@ -123,11 +120,7 @@ export function ChatWindow({
           } catch {
             errMsg = await response.text();
           }
-          console.error("API route error:", {
-            status: response.status,
-            statusText: response.statusText,
-            message: errMsg,
-          });
+          console.error("API route error:", { status: response.status, message: errMsg });
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantMsgId
@@ -146,6 +139,11 @@ export function ChatWindow({
           if (done) break;
 
           const chunk = decoder.decode(value, { stream: true });
+
+          if (!hasStartedReceiving) {
+            setHasStartedReceiving(true);
+          }
+
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantMsgId
@@ -155,7 +153,6 @@ export function ChatWindow({
           );
         }
       } catch (err: any) {
-        // AbortError means the user clicked Stop — not a real error
         if (err?.name !== "AbortError") {
           console.error("Streaming error:", err);
           setMessages((prev) =>
@@ -166,13 +163,12 @@ export function ChatWindow({
             )
           );
         }
-        // If aborted, keep whatever partial content was already streamed in
       } finally {
         abortControllerRef.current = null;
         setIsTyping(false);
+        setHasStartedReceiving(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [isTyping, session, category, messages]
   );
 
@@ -185,7 +181,6 @@ export function ChatWindow({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
-    // Allow typing but cap at MAX_CHARS (slice prevents paste overflow)
     if (val.length <= MAX_CHARS) setInput(val);
   };
 
@@ -195,53 +190,57 @@ export function ChatWindow({
   const hasOnlyGreeting = messages.length === 1;
   const canSend = input.trim().length > 0 && !isTyping && !atLimit;
 
+  // Determine which button to show
+  const showStopButton = isTyping && hasStartedReceiving;
+  const showDisabledSendButton = isTyping && !hasStartedReceiving;
+
   return (
-    <div className="flex flex-col h-full">
-      {/* ── Sign-in banner ─────────────────────────────────────────────── */}
+    <div className="flex flex-col min-h-screen">
+      {/* Sign-in banner */}
       {!session && showSignInBanner && (
-        <div className="absolute top-0 left-0 right-0 p-4 text-center text-naija-dark font-bold flex items-center justify-center z-10 bg-card/90 backdrop-blur-sm border-b border-border">
-          <p className="text-sm text-foreground">Sign in to save your chat history.</p>
-          <button
-            onClick={() => signIn()}
-            className="ml-4 bg-primary text-primary-foreground text-sm px-4 py-1.5 rounded-full font-semibold hover:brightness-110 transition"
-          >
-            Sign In
-          </button>
-          <button
-            onClick={() => setShowSignInBanner(false)}
-            className="ml-2 text-muted-foreground hover:text-foreground transition"
-            aria-label="Dismiss"
-          >
-            <IoClose className="size-5" />
-          </button>
+        <div className="absolute md:top-0 left-0 right-0 p-4 bg-gray-300 text-center text-naija-dark font-bold flex items-center justify-center z-10 bg-card/90 backdrop-blur-sm border-b border-border">
+          <div className="flex items-center">
+            <p className="text-sm text-foreground">Sign in to save your chat history.</p>
+            <button
+              onClick={() => signIn()}
+              className="ml-4 bg-primary text-primary-foreground text-sm px-4 py-1.5 rounded-full font-semibold hover:brightness-110 transition"
+            >
+              Sign In
+            </button>
+            <button
+              onClick={() => setShowSignInBanner(false)}
+              className="ml-2 text-muted-foreground hover:text-foreground transition"
+              aria-label="Dismiss"
+            >
+              <IoClose className="size-5" />
+            </button>
+          </div>
         </div>
       )}
 
-      <div className="flex-1 flex flex-col bg-black relative">
-        {/* ── Messages ───────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-6 space-y-2">
+      <div className="flex-1 flex flex-col bg-black relative min-h-0">
+        <div
+          className="flex-1 overflow-y-auto min-h-0 scrollbar-thin px-4 py-6 space-y-2"
+        >
           {messages.map((msg) => {
-            // Hide the empty placeholder while the typing indicator is showing
-            if (msg.role === "assistant" && msg.content === "" && isTyping)
-              return null;
+            if (msg.role === "assistant" && msg.content === "" && isTyping) return null;
             return <ChatMessage key={msg.id} message={msg} />;
           })}
-
           {isTyping && messages[messages.length - 1]?.content === "" && (
             <TypingIndicator category={category} />
           )}
           <div ref={bottomRef} />
         </div>
 
-        {/* ── Quick prompts (fresh chat only) ────────────────────────────── */}
+        {/* Quick prompts */}
         {hasOnlyGreeting && !isTyping && (
           <QuickPrompts category={category} onSelect={sendMessage} />
         )}
 
-        {/* ── Input area ─────────────────────────────────────────────────── */}
+        {/* Input area */}
         <div className="border-t border-border bg-card/50 backdrop-blur-sm px-3 sm:px-4 py-3">
           <div className="flex items-end gap-2 max-w-3xl mx-auto">
-            {/* Textarea + mic pill */}
+            {/* Textarea + mic */}
             <div className="flex flex-1 flex-col rounded-xl border border-border bg-muted focus-within:border-primary transition-colors">
               <div className="flex items-end gap-1">
                 <textarea
@@ -263,21 +262,15 @@ export function ChatWindow({
                   <FaMicrophone className="size-3.5 sm:size-4" />
                 </button>
               </div>
-
-              {/* Character counter — only appears when within 100 chars of limit */}
               {nearLimit && (
-                <p
-                  className={`text-right text-[10px] px-3 pb-1.5 transition-colors ${
-                    atLimit ? "text-destructive font-semibold" : "text-muted-foreground"
-                  }`}
-                >
+                <p className={`text-right text-[10px] px-3 pb-1.5 transition-colors ${atLimit ? "text-destructive font-semibold" : "text-muted-foreground"}`}>
                   {atLimit ? "Character limit reached" : `${charsLeft} left`}
                 </p>
               )}
             </div>
 
-            {/* Send / Stop button */}
-            {isTyping ? (
+            {/* Button logic: stop / disabled send / normal send */}
+            {showStopButton ? (
               <button
                 onClick={stopStream}
                 className="shrink-0 flex items-center justify-center size-10 sm:size-11 mb-0.5 rounded-xl bg-destructive text-destructive-foreground border border-destructive/30 transition-colors hover:brightness-110"
@@ -285,6 +278,14 @@ export function ChatWindow({
                 title="Stop response"
               >
                 <IoStop className="size-4" />
+              </button>
+            ) : showDisabledSendButton ? (
+              <button
+                disabled
+                className="shrink-0 flex items-center justify-center size-10 sm:size-11 mb-0.5 rounded-xl bg-primary/50 text-primary-foreground border border-primary/30 cursor-not-allowed opacity-50"
+                aria-label="Waiting for response"
+              >
+                <IoSend className="size-4" />
               </button>
             ) : (
               <button
