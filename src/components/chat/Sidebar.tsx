@@ -127,6 +127,7 @@ export function FitnessSidebar({
               src={session.user?.image || ''}
               alt={session.user?.name || ''}
               className="w-8 h-8 rounded-full"
+              rel="noreferrer"
             />
             <div className={`flex-1 min-w-0 ${isCollapsed ? 'md:hidden' : ''}`}>
               <p className="text-sm font-medium truncate text-white">
