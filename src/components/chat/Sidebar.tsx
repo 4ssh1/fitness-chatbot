@@ -112,9 +112,8 @@ export function FitnessSidebar({
       </div>
 
       {/* Footer */}
-      <div className={`border-t border-border py-3 shrink-0 ${isCollapsed ? "px-3 md:px-0 md:flex md:justify-center" : "px-3"}`}>
+      <div className={`py-3 shrink-0 ${isCollapsed ? "px-3 md:px-0 md:flex md:justify-center" : "px-3"}`}>
         <div className="flex items-center gap-2">
-          <FaBolt className="h-4 w-4 text-primary shrink-0" />
           <span className={`text-xs text-muted-foreground ${isCollapsed ? "md:hidden" : ""}`}>
             Powered by Gemini
           </span>
