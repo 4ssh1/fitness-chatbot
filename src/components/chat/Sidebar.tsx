@@ -1,4 +1,4 @@
-import { FaDumbbell, FaUtensils, FaWalking, FaComment, FaBolt, FaPlus, FaChevronLeft, FaTimes } from "react-icons/fa";
+import { FaDumbbell, FaUtensils, FaWalking, FaComment, FaHistory, FaPlus, FaChevronLeft, FaTimes } from "react-icons/fa";
 import { type CategoryType } from "./Category";
 import { useSession, signIn, signOut } from 'next-auth/react';
 
@@ -6,6 +6,7 @@ interface FitnessSidebarProps {
   activeCategory: CategoryType;
   onCategoryChange: (category: CategoryType) => void;
   onNewChat: () => void;
+  onOpenHistory: () => void;
   collapsed: boolean;
   onToggle: () => void;
   onMobileClose: () => void;
@@ -22,6 +23,7 @@ export function FitnessSidebar({
   activeCategory,
   onCategoryChange,
   onNewChat,
+  onOpenHistory,
   collapsed,
   onToggle,
   onMobileClose,
@@ -78,6 +80,17 @@ export function FitnessSidebar({
         >
           <FaPlus className="h-3.5 w-3.5 shrink-0" />
           <span className={isCollapsed ? "md:hidden" : ""}>New Chat</span>
+        </button>
+        <button
+          onClick={onOpenHistory}
+          className={`mt-2 flex items-center gap-2 rounded-xl border border-gray-600 bg-gray-800/50 text-gray-300 text-sm font-medium transition-all hover:bg-gray-700/50 h-9 ${
+            isCollapsed
+              ? "w-full px-3 md:w-9 md:justify-center md:px-0"
+              : "w-full px-3"
+          }`}
+        >
+          <FaHistory className="h-3.5 w-3.5 shrink-0" />
+          <span className={isCollapsed ? "md:hidden" : ""}>History</span>
         </button>
       </div>
 
