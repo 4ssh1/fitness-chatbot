@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { FaBars } from "react-icons/fa";
 import { FitnessSidebar } from "./Sidebar";
 import { ChatWindow } from "./ChatWindow";
+import { HistoryModal } from "./HistoryModal";
+import { type ChatMessage } from "@/types/chat";
 
 export type CategoryType = "all" | "food" | "workouts" | "form";
 
@@ -11,8 +14,23 @@ const Category = () => {
   const [category, setCategory] = useState<CategoryType>("all");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<Record<string, ChatMessage[]>>({});
   const [conversationId, setConversationId] = useState(Date.now());
+  const { data: session } = useSession();
+
+  useEffect(() => {
+    if (session) {
+      fetch("/api/chat/history")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.history) {
+            setHistory(data.history);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [session]);
 
   const handleCategoryChange = (cat: CategoryType) => {
     setCategory(cat);
@@ -20,8 +38,43 @@ const Category = () => {
   };
 
   const handleNewChat = () => {
-    setConversationId(Date.now());
     setMobileSidebarOpen(false);
+  };
+
+  const handleHistory = () => {
+    setIsHistoryOpen(true);
+    setMobileSidebarOpen(false);
+  };
+
+  const handleSelectHistory = (selectedMessages: ChatMessage[]) => {
+    // Find the category of the selected history
+    const categoryOfHistory = Object.keys(history).find(key => history[key] === selectedMessages);
+    if (categoryOfHistory) {
+      setCategory(categoryOfHistory as CategoryType);
+    }
+    setConversationId(Date.now());
+    setIsHistoryOpen(false);
+  };
+
+  const handleDeleteHistory = async (categoryToDelete: string) => {
+    if (!session) return;
+
+    try {
+      const response = await fetch(`/api/chat?category=${categoryToDelete}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok) {
+        // Optimistically update UI
+        const newHistory = { ...history };
+        delete newHistory[categoryToDelete];
+        setHistory(newHistory);
+      } else {
+        console.error("Failed to delete history");
+      }
+    } catch (error) {
+      console.error("Error deleting history:", error);
+    }
   };
 
   return (
@@ -44,6 +97,7 @@ const Category = () => {
           activeCategory={category}
           onCategoryChange={handleCategoryChange}
           onNewChat={handleNewChat}
+          onOpenHistory={handleHistory}
           collapsed={sidebarCollapsed}
           onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
           onMobileClose={() => setMobileSidebarOpen(false)}
@@ -65,8 +119,20 @@ const Category = () => {
           </h1>
         </div>
 
-        <ChatWindow key={conversationId} category={category} />
+        <ChatWindow
+          key={conversationId}
+          category={category}
+          onNewChat={handleNewChat}
+        />
       </main>
+
+      <HistoryModal
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        history={history}
+        onSelectHistory={handleSelectHistory}
+        onDeleteHistory={handleDeleteHistory}
+      />
     </div>
   );
 };

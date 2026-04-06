@@ -7,6 +7,7 @@ import { ChatMessage } from "@/components/chat/Message";
 import { TypingIndicator } from "@/components/chat/Indicator";
 import { QuickPrompts } from "@/components/chat/QuickPrompts";
 import { useSession, signIn } from "next-auth/react";
+import { saveGuestSession, loadGuestSession, deleteGuestSession } from "@/lib/indexedDB";
 
 const MAX_CHARS = 1000;
 
@@ -19,23 +20,25 @@ interface Message {
 
 export function ChatWindow({
   category,
+  onNewChat,
 }: {
   category: "all" | "food" | "workouts" | "form";
+  onNewChat: () => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [hasStartedReceiving, setHasStartedReceiving] = useState(false);
   const [showSignInBanner, setShowSignInBanner] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-
   const { data: session } = useSession();
 
-  // ── Greeting on category change ──────────────────────────────────────────
-  useEffect(() => {
+  // ── Helper: get greeting message for a category ─────────────────────────
+  const getGreetingMessage = (cat: string): Message => {
     const greetings: Record<string, string> = {
       all: "Hey! I'm **Gbebody AI**, your personal fitness assistant \n\n What's your goal today?",
       food: "**Nutrition Mode** activated!\n\nI can help with meal plans, macros, calorie targets, pre/post workout nutrition, and healthy recipes. What are you working towards?",
@@ -43,24 +46,109 @@ export function ChatWindow({
         "**Workout Mode** activated!\n\nI'll help you build programs, plan splits, track progressive overload, and choose the right exercises. What are we training today?",
       form: "**Form & Technique Mode** activated!\n\nI'll guide you through proper movement patterns, cues to watch for, and how to avoid injury. Which exercise or movement do you want to nail?",
     };
-    setMessages([
-      {
-        id: "greeting",
-        role: "assistant",
-        content: greetings[category] ?? greetings.all,
-        timestamp: new Date(),
-      },
-    ]);
-  }, [category]);
+    return {
+      id: "greeting",
+      role: "assistant",
+      content: greetings[cat] ?? greetings.all,
+      timestamp: new Date(),
+    };
+  };
 
+  // ── Load messages on mount / category change / session change ───────────
+  useEffect(() => {
+    const loadMessages = async () => {
+      setIsLoading(true);
+      try {
+        if (session) {
+          // Authenticated: fetch from API
+          const res = await fetch(`/api/chat?category=${category}`);
+          const data = await res.json();
+          if (data.messages && data.messages.length > 0) {
+            setMessages(data.messages);
+          } else {
+            setMessages([getGreetingMessage(category)]);
+          }
+        } else {
+          // Guest: load from IndexedDB
+          const saved = await loadGuestSession(category);
+          if (saved && saved.length > 0) {
+            setMessages(saved);
+          } else {
+            setMessages([getGreetingMessage(category)]);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load chat:", err);
+        setMessages([getGreetingMessage(category)]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadMessages();
+  }, [category, session]);
+
+  // ── Save messages whenever they change (skip initial load) ──────────────
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (isLoading) return;
+
+    const saveMessages = async () => {
+      try {
+        if (session) {
+          await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages, category }),
+          });
+        } else {
+          await saveGuestSession(category, messages);
+        }
+      } catch (err) {
+        console.error("Failed to save chat:", err);
+      }
+    };
+    saveMessages();
+  }, [messages, session, category, isLoading]);
+
+  // ── New Chat: clear storage and reset messages ──────────────────────────
+  const handleNewChat = async () => {
+    // Stop any ongoing streaming
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsTyping(false);
+    setHasStartedReceiving(false);
+
+    try {
+      if (session) {
+        // Delete from server
+        await fetch(`/api/chat?category=${category}`, { method: "DELETE" });
+      } else {
+        // Delete from IndexedDB
+        await deleteGuestSession(category);
+      }
+    } catch (err) {
+      console.error("Failed to delete chat:", err);
+    }
+
+    setMessages([getGreetingMessage(category)]);
+    onNewChat(); // notify parent (e.g., close mobile sidebar)
+  };
+
+  // ── Stop streaming (called by UI button) ────────────────────────────────
   const stopStream = useCallback(() => {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     setIsTyping(false);
-    setHasStartedReceiving(false); // reset for next message
+    setHasStartedReceiving(false);
   }, []);
 
-  // ── Send / stream message ─────────────────────────────────────────────────
+  // ── Send message with streaming ──────────────────────────────────────────
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
@@ -79,7 +167,7 @@ export function ChatWindow({
       setMessages((prev) => [...prev, userMsg]);
       setInput("");
       setIsTyping(true);
-      setHasStartedReceiving(false); // reset before fetch
+      setHasStartedReceiving(false);
 
       const assistantMsgId = `asst_${Date.now()}`;
       setMessages((prev) => [
@@ -107,28 +195,13 @@ export function ChatWindow({
               .slice(-10)
               .map((m) => ({
                 role: m.role,
-                content: m.content.slice(0, 2000)
+                content: m.content.slice(0, 2000),
               })),
           }),
         });
 
         if (!response.ok || !response.body) {
-          let errMsg = "Unknown error";
-          try {
-            const err = await response.json();
-            errMsg = JSON.stringify(err);
-          } catch {
-            errMsg = await response.text();
-          }
-          console.error("API route error:", { status: response.status, message: errMsg });
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsgId
-                ? { ...m, content: "Sorry, something went wrong. Please try again." }
-                : m
-            )
-          );
-          return;
+          throw new Error(`API error: ${response.status}`);
         }
 
         const reader = response.body.getReader();
@@ -137,18 +210,11 @@ export function ChatWindow({
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-
           const chunk = decoder.decode(value, { stream: true });
-
-          if (!hasStartedReceiving) {
-            setHasStartedReceiving(true);
-          }
-
+          if (!hasStartedReceiving) setHasStartedReceiving(true);
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === assistantMsgId
-                ? { ...m, content: m.content + chunk }
-                : m
+              m.id === assistantMsgId ? { ...m, content: m.content + chunk } : m
             )
           );
         }
@@ -187,12 +253,19 @@ export function ChatWindow({
   const charsLeft = MAX_CHARS - input.length;
   const nearLimit = charsLeft <= 100;
   const atLimit = charsLeft === 0;
-  const hasOnlyGreeting = messages.length === 1;
+  const hasOnlyGreeting = messages.length === 1 && !isTyping;
   const canSend = input.trim().length > 0 && !isTyping && !atLimit;
 
-  // Determine which button to show
   const showStopButton = isTyping && hasStartedReceiving;
   const showDisabledSendButton = isTyping && !hasStartedReceiving;
+
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-black">
+        <div className="text-muted-foreground">Loading chat...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -219,9 +292,8 @@ export function ChatWindow({
       )}
 
       <div className="flex-1 flex flex-col bg-black relative min-h-0">
-        <div
-          className="flex-1 overflow-y-auto min-h-0 scrollbar-thin px-4 py-6 space-y-2"
-        >
+        {/* Messages container */}
+        <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin px-4 py-6 space-y-2">
           {messages.map((msg) => {
             if (msg.role === "assistant" && msg.content === "" && isTyping) return null;
             return <ChatMessage key={msg.id} message={msg} />;
@@ -233,14 +305,13 @@ export function ChatWindow({
         </div>
 
         {/* Quick prompts */}
-        {hasOnlyGreeting && !isTyping && (
+        {hasOnlyGreeting && (
           <QuickPrompts category={category} onSelect={sendMessage} />
         )}
 
         {/* Input area */}
         <div className="border-t border-border bg-card/50 backdrop-blur-sm px-3 sm:px-4 py-3">
           <div className="flex items-end gap-2 max-w-3xl mx-auto">
-            {/* Textarea + mic */}
             <div className="flex flex-1 flex-col rounded-xl border border-border bg-muted focus-within:border-primary transition-colors">
               <div className="flex items-end gap-1">
                 <textarea
@@ -263,19 +334,21 @@ export function ChatWindow({
                 </button>
               </div>
               {nearLimit && (
-                <p className={`text-right text-[10px] px-3 pb-1.5 transition-colors ${atLimit ? "text-destructive font-semibold" : "text-muted-foreground"}`}>
+                <p
+                  className={`text-right text-[10px] px-3 pb-1.5 transition-colors ${
+                    atLimit ? "text-destructive font-semibold" : "text-muted-foreground"
+                  }`}
+                >
                   {atLimit ? "Character limit reached" : `${charsLeft} left`}
                 </p>
               )}
             </div>
 
-            {/* Button logic: stop / disabled send / normal send */}
             {showStopButton ? (
               <button
                 onClick={stopStream}
                 className="shrink-0 flex items-center justify-center size-10 sm:size-11 mb-0.5 rounded-xl bg-destructive text-destructive-foreground border border-destructive/30 transition-colors hover:brightness-110"
                 aria-label="Stop response"
-                title="Stop response"
               >
                 <IoStop className="size-4" />
               </button>
@@ -298,7 +371,6 @@ export function ChatWindow({
               </button>
             )}
           </div>
-
           <p className="text-center text-muted-foreground text-[9px] sm:text-xs mt-2">
             Gbebody AI can make mistakes. Consult a professional for medical or dietary advice.
           </p>

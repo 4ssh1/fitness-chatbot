@@ -20,6 +20,7 @@
     "@vercel/postgres": "^0.10.0",
     "dotenv": "^17.2.3",
     "framer-motion": "^12.35.0",
+    "idb": "^8.0.3",
     "langchain": "^1.2.39",
     "mongo-sanitize": "^1.1.0",
     "mongodb": "^7.1.1",
