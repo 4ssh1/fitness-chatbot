@@ -7,6 +7,7 @@ import { TypingIndicator } from "@/components/chat/Indicator";
 import { QuickPrompts } from "@/components/chat/QuickPrompts";
 import { useSession, signIn } from "next-auth/react";
 import { MicButton } from "@/components/chat/Mic";
+import { useToast } from "@/hooks/useToast";
 import { saveGuestSession, loadGuestSession, clearConversations } from "@/lib/indexedDB";
 
 const MAX_CHARS = 1000;
@@ -36,6 +37,7 @@ export function ChatWindow({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const { data: session } = useSession();
+  const { showSuccess, showError } = useToast();
 
   useEffect(() => {
     if (session) return;
@@ -108,7 +110,7 @@ export function ChatWindow({
           }
         }
       } catch (err) {
-        console.error("Failed to load chat:", err);
+        showError("Failed to load chat. Please try again.");
         setMessages([getGreetingMessage(category)]);
       } finally {
         setIsLoading(false);
@@ -138,7 +140,7 @@ export function ChatWindow({
           await saveGuestSession(category, messages);
         }
       } catch (err) {
-        console.error("Failed to save chat:", err);
+        showError("Failed to save chat. Your latest messages might not be saved.");
       }
     };
     saveMessages();
@@ -163,11 +165,12 @@ export function ChatWindow({
         await clearConversations();
       }
     } catch (err) {
-      console.error("Failed to delete chat:", err);
+      showError("Failed to clear chat history.");
     }
 
     setMessages([getGreetingMessage(category)]);
     onNewChat(); // notify parent (e.g., close mobile sidebar)
+    showSuccess("New chat started!");
   };
 
   // ── Stop streaming (called by UI button) ────────────────────────────────
@@ -250,7 +253,7 @@ export function ChatWindow({
         }
       } catch (err: any) {
         if (err?.name !== "AbortError") {
-          console.error("Streaming error:", err);
+          showError("Sorry, something went wrong. Please try again.");
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantMsgId

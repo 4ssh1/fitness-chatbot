@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Dela_Gothic_One, DM_Sans } from "next/font/google";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route"; // adjust path
 import "./globals.css";
+import { ToastProvider } from "@/components/providers/ToastProvider";
 import Provider from "./SessionProvider";
 import { getServerSession } from "next-auth";
 
@@ -33,7 +34,10 @@ export default async function RootLayout({ children }: Readonly<{
   return (
     <html lang="en">
       <body className={`${delaGothicOne.variable} ${dmSans.variable} antialiased`}>
-        <Provider session={session}>{children}</Provider>
+        <Provider session={session}>
+          <ToastProvider />
+          {children}
+        </Provider>
       </body>
     </html>
   );
