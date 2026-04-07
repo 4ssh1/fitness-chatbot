@@ -24,12 +24,17 @@ export async function saveGuestSession(category: string, messages: any[]) {
   await db.put(STORE_NAME, messages, category);
 }
 
-export async function loadGuestSession(category: string): Promise<any[] | null> {
+export async function loadGuestSession(
+  category: string
+): Promise<any[] | null> {
   const db = await getDB();
   return (await db.get(STORE_NAME, category)) || null;
 }
 
-export async function deleteGuestSession(category: string) {
+export const clearConversations = async () => {
   const db = await getDB();
-  await db.delete(STORE_NAME, category);
-}
+  const tx = db.transaction(STORE_NAME, 'readwrite');
+  const store = tx.objectStore(STORE_NAME);
+  await store.clear();
+  await tx.done;
+};

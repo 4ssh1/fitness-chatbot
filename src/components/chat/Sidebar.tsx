@@ -28,7 +28,7 @@ export function FitnessSidebar({
   onToggle,
   onMobileClose,
 }: FitnessSidebarProps) {
-  const { data: session } = useSession()
+  const { data: session } = useSession();
   // On mobile: never collapsed. On desktop: respect the prop.
   const isCollapsed = collapsed; // only visually applied at lg via classes
 
@@ -81,17 +81,19 @@ export function FitnessSidebar({
           <FaPlus className="h-3.5 w-3.5 shrink-0" />
           <span className={isCollapsed ? "md:hidden" : ""}>New Chat</span>
         </button>
-        <button
-          onClick={onOpenHistory}
-          className={`mt-2 flex items-center gap-2 rounded-xl border border-gray-600 bg-gray-800/50 text-gray-300 text-sm font-medium transition-all hover:bg-gray-700/50 h-9 ${
-            isCollapsed
-              ? "w-full px-3 md:w-9 md:justify-center md:px-0"
-              : "w-full px-3"
-          }`}
-        >
-          <FaHistory className="h-3.5 w-3.5 shrink-0" />
-          <span className={isCollapsed ? "md:hidden" : ""}>History</span>
-        </button>
+        {session && (
+          <button
+            onClick={onOpenHistory}
+            className={`mt-2 flex items-center gap-2 rounded-xl border border-gray-600 bg-gray-800/50 text-gray-300 text-sm font-medium transition-all hover:bg-gray-700/50 h-9 ${
+              isCollapsed
+                ? "w-full px-3 md:w-9 md:justify-center md:px-0"
+                : "w-full px-3"
+            }`}
+          >
+            <FaHistory className="h-3.5 w-3.5 shrink-0" />
+            <span className={isCollapsed ? "md:hidden" : ""}>History</span>
+          </button>
+        )}
       </div>
 
       {/* Categories */}
@@ -156,7 +158,7 @@ export function FitnessSidebar({
         ) : (
           <button
             onClick={() => signIn()}
-            className={`w-full text-white font-bold py-2 px-4 rounded-full ${
+            className={`w-full text-black text-center inline-block bg-white/80 font-bold py-2 px-4 rounded-full ${
               isCollapsed ? 'md:hidden' : ''
             }`}
           >

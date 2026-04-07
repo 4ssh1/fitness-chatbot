@@ -5,6 +5,7 @@ import "./globals.css";
 import Provider from "./SessionProvider";
 import { getServerSession } from "next-auth";
 
+
 const delaGothicOne = Dela_Gothic_One({
   subsets: ["latin"],
   weight: "400",

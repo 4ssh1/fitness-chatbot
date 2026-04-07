@@ -7,7 +7,7 @@ import { ChatMessage } from "@/components/chat/Message";
 import { TypingIndicator } from "@/components/chat/Indicator";
 import { QuickPrompts } from "@/components/chat/QuickPrompts";
 import { useSession, signIn } from "next-auth/react";
-import { saveGuestSession, loadGuestSession, deleteGuestSession } from "@/lib/indexedDB";
+import { saveGuestSession, loadGuestSession, clearConversations } from "@/lib/indexedDB";
 
 const MAX_CHARS = 1000;
 
@@ -36,6 +36,36 @@ export function ChatWindow({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const { data: session } = useSession();
+
+  useEffect(() => {
+    if (session) return; 
+
+    const handleBeforeUnload = () => {
+      sessionStorage.setItem("isReloading", "true");
+    };
+
+    const handleLoad = () => {
+      if (sessionStorage.getItem("isReloading")) {
+        sessionStorage.removeItem("isReloading");
+      } else {
+        // This case handles when the browser is closed and reopened
+        clearConversations();
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("load", handleLoad);
+
+    // This handles the initial load of a new session
+    if (!sessionStorage.getItem("isReloading")) {
+      clearConversations();
+    }
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("load", handleLoad);
+    };
+  }, [session]);
 
   // ── Helper: get greeting message for a category ─────────────────────────
   const getGreetingMessage = (cat: string): Message => {
@@ -130,7 +160,7 @@ export function ChatWindow({
         await fetch(`/api/chat?category=${category}`, { method: "DELETE" });
       } else {
         // Delete from IndexedDB
-        await deleteGuestSession(category);
+        await clearConversations();
       }
     } catch (err) {
       console.error("Failed to delete chat:", err);

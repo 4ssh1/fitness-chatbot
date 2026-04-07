@@ -11,8 +11,8 @@ import { type ChatMessage } from "@/types/chat";
 export type CategoryType = "all" | "food" | "workouts" | "form";
 
 const Category = () => {
-  const [category, setCategory] = useState<CategoryType>("all");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<CategoryType>("all");
+  const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [history, setHistory] = useState<Record<string, ChatMessage[]>>({});
@@ -20,6 +20,11 @@ const Category = () => {
   const { data: session } = useSession();
 
   useEffect(() => {
+    const savedCategory = sessionStorage.getItem("activeCategory") as CategoryType;
+    if (savedCategory) {
+      setActiveCategory(savedCategory);
+    }
+
     if (session) {
       fetch("/api/chat/history")
         .then((res) => res.json())
@@ -33,7 +38,8 @@ const Category = () => {
   }, [session]);
 
   const handleCategoryChange = (cat: CategoryType) => {
-    setCategory(cat);
+    setActiveCategory(cat);
+    sessionStorage.setItem("activeCategory", cat);
     setMobileSidebarOpen(false);
   };
 
@@ -50,7 +56,7 @@ const Category = () => {
     // Find the category of the selected history
     const categoryOfHistory = Object.keys(history).find(key => history[key] === selectedMessages);
     if (categoryOfHistory) {
-      setCategory(categoryOfHistory as CategoryType);
+      setActiveCategory(categoryOfHistory as CategoryType);
     }
     setConversationId(Date.now());
     setIsHistoryOpen(false);
@@ -94,12 +100,12 @@ const Category = () => {
         }`}
       >
         <FitnessSidebar
-          activeCategory={category}
+          activeCategory={activeCategory}
           onCategoryChange={handleCategoryChange}
           onNewChat={handleNewChat}
           onOpenHistory={handleHistory}
-          collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          collapsed={isSidebarOpen}
+          onToggle={() => setSidebarOpen(!isSidebarOpen)}
           onMobileClose={() => setMobileSidebarOpen(false)}
         />
       </div>
@@ -121,7 +127,7 @@ const Category = () => {
 
         <ChatWindow
           key={conversationId}
-          category={category}
+          category={activeCategory}
           onNewChat={handleNewChat}
         />
       </main>
