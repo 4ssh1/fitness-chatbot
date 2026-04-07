@@ -64,8 +64,6 @@ export async function POST(req: NextRequest) {
 
   try {
     const contentLength = req.headers.get("content-length");
-    const contentLengthNum = contentLength ? parseInt(contentLength) : 0;
-    console.log("Request content length:", contentLengthNum, "bytes");
     
     // Increase limit to 100KB for chat history
     if (contentLength && parseInt(contentLength) > 100_000) {

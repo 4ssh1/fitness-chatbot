@@ -2,11 +2,11 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { IoSend, IoStop, IoClose } from "react-icons/io5";
-import { FaMicrophone } from "react-icons/fa";
 import { ChatMessage } from "@/components/chat/Message";
 import { TypingIndicator } from "@/components/chat/Indicator";
 import { QuickPrompts } from "@/components/chat/QuickPrompts";
 import { useSession, signIn } from "next-auth/react";
+import { MicButton } from "@/components/chat/Mic";
 import { saveGuestSession, loadGuestSession, clearConversations } from "@/lib/indexedDB";
 
 const MAX_CHARS = 1000;
@@ -38,7 +38,7 @@ export function ChatWindow({
   const { data: session } = useSession();
 
   useEffect(() => {
-    if (session) return; 
+    if (session) return;
 
     const handleBeforeUnload = () => {
       sessionStorage.setItem("isReloading", "true");
@@ -354,20 +354,15 @@ export function ChatWindow({
                   disabled={isTyping}
                   className="flex-1 resize-none bg-transparent px-3 py-3 text-[9px] sm:text-sm text-foreground outline-none sm:max-h-40 placeholder:text-muted-foreground disabled:opacity-50"
                 />
-                <button
-                  type="button"
+                <MicButton
+                  onTranscript={(text) => setInput((prev) => prev + (prev ? " " : "") + text)}
                   disabled={isTyping}
-                  className="shrink-0 flex items-center justify-center w-9 h-9 mb-1.5 mr-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-40"
-                  aria-label="Voice input"
-                >
-                  <FaMicrophone className="size-3.5 sm:size-4" />
-                </button>
+                />
               </div>
               {nearLimit && (
                 <p
-                  className={`text-right text-[10px] px-3 pb-1.5 transition-colors ${
-                    atLimit ? "text-destructive font-semibold" : "text-muted-foreground"
-                  }`}
+                  className={`text-right text-[10px] px-3 pb-1.5 transition-colors ${atLimit ? "text-destructive font-semibold" : "text-muted-foreground"
+                    }`}
                 >
                   {atLimit ? "Character limit reached" : `${charsLeft} left`}
                 </p>
