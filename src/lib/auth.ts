@@ -22,40 +22,44 @@ export const authOptions: AuthOptions = {
     signIn: "/get-started",
   },
   callbacks: {
-    // Called whenever a JWT is created or updated
     async jwt({ token, account, profile }) {
-      // On initial sign-in, account and profile are available
       if (account && profile) {
-        const db = await getMongoDb();
-        const usersCollection = db.collection("users");
+        try {
+          const db = await getMongoDb();
+          const usersCollection = db.collection("users");
 
-        const email = profile?.email;
-        if (!email) {
-          throw new Error("Email not found in profile");
+          const email = profile?.email;
+          if (!email) {
+            throw new Error("Email not found in profile");
+          }
+
+          const userData = {
+            email: email,
+            name: profile?.name,
+            image: (profile as any)?.picture, 
+            provider: account.provider,
+            providerAccountId: account.providerAccountId,
+            lastLogin: new Date(),
+          };
+
+          const result = await usersCollection.findOneAndUpdate(
+            { email: email },
+            { $set: userData, $setOnInsert: { createdAt: new Date() } },
+            { upsert: true, returnDocument: "after" }
+          );
+
+          if (result?._id) {
+            token.userId = result._id.toString();
+          } 
+        } catch (error) {
+          throw error;
         }
-
-        const userData = {
-          email: email,
-          name: profile?.name,
-          image: (profile as any)?.picture, 
-          provider: account.provider,
-          providerAccountId: account.providerAccountId,
-          lastLogin: new Date(),
-        };
-
-        const result = await usersCollection.findOneAndUpdate(
-          { email: email },
-          { $set: userData, $setOnInsert: { createdAt: new Date() } },
-          { upsert: true, returnDocument: "after" }
-        );
-
-        token.userId = result?.value?._id.toString();
       }
       return token;
     },
 
     async session({ session, token }) {
-      if (token.userId) {
+      if (token.userId && session.user) {
         session.user.id = token.userId as string;
       }
       return session;

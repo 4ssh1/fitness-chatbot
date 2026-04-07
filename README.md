@@ -16,6 +16,38 @@ A Nigerian-context fitness chatbot built with Next.js, LangChain, Google Gemini,
 
 ---
 
+## Architecture
+
+The application is built on a client-server model featuring a Retrieval-Augmented Generation (RAG) pipeline to deliver contextual and accurate AI-driven fitness advice.
+
+### Request Lifecycle
+
+1.  **Frontend Interaction (`ChatWindow.tsx`)**: The user sends a message from the Next.js client. The chat history, category, and user message are bundled and streamed to the backend.
+2.  **API  (`api/ai/route.ts`)**: A dedicated API route receives the request and performs several critical middleware functions:
+    *   **Security**: Validates the request payload, checks for prompt injection, and enforces rate limiting using Upstash Redis.
+    *   **Category Routing**: If the user-selected category is "All Topics," it detects the most relevant category from the message to narrow the search context.
+    *   **Session Management**: Assigns a guest `userId` via cookies if the user is not authenticated.
+3.  **RAG Service (`ragService.ts`)**: This is the core engine of the application. It orchestrates the retrieval and generation process:
+    *   **Retrieval**: It performs a semantic search against a MongoDB Atlas Vector Search index to find the top 4 most relevant knowledge chunks related to the user's query.
+    *   **Context Augmentation**: The retrieved chunks are combined with the chat history and the original user question to form a comprehensive prompt.
+    *   **Generation**: The augmented prompt is sent to the Google Gemini 2.5 Flash model, which generates a response. The response is streamed back token-by-token.
+4.  **Response Streaming**: The backend streams the response directly to the client, allowing the user to see the answer as it's being generated.
+5.  **Persistence**: Upon response completion, the conversation is saved. Authenticated user chats are stored in a MongoDB `chats` collection via the `/api/chat` endpoint, while guest chats are persisted locally in the browser's IndexedDB.
+
+### Data Flow 
+
+- Client to Server: The user's input initiates a POST request to /api/ai and is validated.
+
+- Server to Engine (RAG): The request is passed to your RAG Service, which interacts with MongoDB Atlas to perform a vector search for relevant context.
+
+- Engine to LLM: The context and query are sent to Google Gemini, which generates the response and streams tokens back to the engine.
+
+- Streaming Back: The tokens stream continuously from the Engine to the Server, and then to the Client UI, where they are displayed in real-time.
+
+- Persistence: Finally, a separate POST request handles saving the full conversation history to MongoDB.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -85,10 +117,3 @@ npm run dev
 
 5. Name the index `anything`
 
----
-
-## Known Limitations
-
-- No authentication yet  users are identified by a cookie-based anonymous ID. Auth is planned.
-- The `config.api.bodyParser` export in `route.ts` is Pages Router syntax and has no effect in App Router. The manual `content-length` check covers this instead.
-- Voice input button exists in the UI but is not yet wired up.
