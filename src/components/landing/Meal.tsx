@@ -46,7 +46,7 @@ export function MealShowcase() {
   })
   return (
     <section
-      className="py-32 bg-naija-purple clip-diagonal-both relative z-10"
+      className="md:py-32 py-50 bg-naija-purple clip-diagonal-both relative z-10"
       ref={ref}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -91,7 +91,7 @@ export function MealShowcase() {
               duration: 0.5,
               delay: 0.2,
             }}
-            className="text-xl text-naija-yellow font-medium max-w-2xl mx-auto"
+            className="text-lg text-naija-yellow font-medium max-w-2xl mx-auto"
           >
             Sample meals from your AI-powered plan
           </motion.p>

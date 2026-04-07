@@ -18,6 +18,5 @@ export async function saveMessage(
     conversationId: new ObjectId(conversationId),
     role,
     content,
-    createdAt: new Date(),
   });
 }

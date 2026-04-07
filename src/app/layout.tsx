@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Dela_Gothic_One, DM_Sans } from "next/font/google";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route"; // adjust path
+import { authOptions } from "@/lib/auth";
 import "./globals.css";
 import { ToastProvider } from "@/components/providers/ToastProvider";
 import Provider from "./SessionProvider";

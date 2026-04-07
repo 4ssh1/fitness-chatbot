@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { getMongoDb } from "@/lib/mongodb";
-import { authOptions } from "../auth/[...nextauth]/route";
-
+import { authOptions } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,13 +12,22 @@ export async function GET(req: NextRequest) {
     const userId = session.user.id;
 
     const { searchParams } = new URL(req.url);
-    const category = searchParams.get("category") || "all";
+    const category = searchParams.get("category");
 
     const db = await getMongoDb();
     const collection = db.collection("chats");
 
-    const doc = await collection.findOne({ userId, category });
-    return NextResponse.json({ messages: doc?.messages || [] });
+    if (category) {
+      const doc = await collection.findOne({ userId, category });
+      return NextResponse.json({ messages: doc?.messages || [] });
+    } else {
+      const docs = await collection.find({ userId }).toArray();
+      const history = docs.reduce((acc, doc) => {
+        acc[doc.category] = doc.messages;
+        return acc;
+      }, {} as Record<string, any[]>);
+      return NextResponse.json({ history });
+    }
   } catch (error) {
     console.error("GET /api/chat error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

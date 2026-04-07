@@ -67,7 +67,7 @@ export function Features() {
             transition={{
               duration: 0.6,
             }}
-            className="text-5xl md:text-6xl font-heading text-naija-dark mb-6"
+            className="text-3xl md:text-6xl font-heading text-naija-dark mb-6"
           >
             Wetin You Go Get
           </motion.h2>

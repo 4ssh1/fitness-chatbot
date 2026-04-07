@@ -36,7 +36,7 @@ export function FinalCTA() {
           transition={{
             duration: 0.6,
           }}
-          className="text-5xl md:text-7xl font-heading text-white mb-8 text-shadow-bold"
+          className="text-xl md:text-7xl font-heading text-white mb-8 text-shadow-bold"
         >
           Your Body Deserves Better
         </motion.h2>
@@ -58,9 +58,9 @@ export function FinalCTA() {
             duration: 0.6,
             delay: 0.2,
           }}
-          className="text-xl md:text-2xl text-white/90 font-medium mb-6 leading-relaxed"
+          className="text-lg md:text-2xl text-white/90 font-medium mb-6 leading-relaxed"
         >
-          No more copying oyinbo diet plans wey no work for us. GbeBody AI
+          No more copying oyinbo diet plans wey no work for us. <br /> GbeBody AI
           understands Nigerian food, Nigerian bodies, Nigerian goals.
         </motion.p>
 
@@ -81,7 +81,7 @@ export function FinalCTA() {
             duration: 0.6,
             delay: 0.3,
           }}
-          className="text-2xl md:text-3xl font-heading text-naija-yellow mb-12 transform -rotate-2 inline-block"
+          className="text-2xl md:text-3xl font-heading text-naija-purple mb-12 transform -rotate-2 inline-block"
         >
           Make we start this journey together! 
         </motion.p>

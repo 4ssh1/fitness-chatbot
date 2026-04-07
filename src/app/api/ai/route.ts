@@ -4,7 +4,7 @@ import { createChatStream } from "@/services/chatService";
 import { ChatRequestSchema } from "@/validation/user";
 import { ratelimit } from "@/lib/rateLimit";
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/auth";
 
 function detectCategory(text: string): string {
   if (/(food|eat|meal|protein|calorie|macro|nutrition|diet|carb|fat|cook|recipe)/i.test(text))

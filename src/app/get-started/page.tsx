@@ -19,14 +19,14 @@ export default function LoginPage() {
 
       <button
         onClick={handleBack}
-        className="absolute top-4 left-8 flex items-center gap-2 text-naija-dark hover:text-naija-magenta transition-colors font-bold z-10 bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full border-2 border-naija-dark box-shadow-bold hover:-translate-y-0.5"
+        className="absolute top-4 left-2 md:left-8 flex items-center gap-2 text-naija-dark hover:text-naija-magenta transition-colors font-bold z-10 bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full border-2 border-naija-dark box-shadow-bold hover:-translate-y-0.5"
       >
         <IoArrowBack className="w-5 h-5" />
         Back to Home
         </button>
       <button
         onClick={()=> router.push('/chat')}
-        className="absolute top-4 right-8 flex items-center gap-2 text-naija-dark hover:text-naija-magenta transition-colors font-bold z-10 bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full border-2 border-naija-dark box-shadow-bold hover:-translate-y-0.5"
+        className="absolute top-4 right-2 md:right-8 flex items-center gap-2 text-naija-dark hover:text-naija-magenta transition-colors font-bold z-10 bg-white/80 backdrop-blur-sm px-4 py-2 rounded-full border-2 border-naija-dark box-shadow-bold hover:-translate-y-0.5"
       >
         <IoArrowForward className="w-5 h-5" />
         Use AI

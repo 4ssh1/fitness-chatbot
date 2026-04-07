@@ -26,7 +26,7 @@ const Category = () => {
     }
 
     if (session) {
-      fetch("/api/chat/history")
+      fetch("/api/chat")
         .then((res) => res.json())
         .then((data) => {
           if (data.history) {
@@ -53,7 +53,6 @@ const Category = () => {
   };
 
   const handleSelectHistory = (selectedMessages: ChatMessage[]) => {
-    // Find the category of the selected history
     const categoryOfHistory = Object.keys(history).find(key => history[key] === selectedMessages);
     if (categoryOfHistory) {
       setActiveCategory(categoryOfHistory as CategoryType);

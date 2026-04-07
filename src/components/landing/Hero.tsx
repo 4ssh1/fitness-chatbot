@@ -61,7 +61,7 @@ export function Hero() {
 
           <motion.p
             variants={itemVariants}
-            className="text-xl md:text-2xl text-white/90 mb-12 max-w-3xl mx-auto font-medium leading-relaxed"
+            className="text-lg md:text-2xl text-white/90 mb-12 max-w-3xl mx-auto font-medium leading-relaxed"
           >
             Meet your AI gym buddy that plans meals with jollof rice, suya, and
             all your favorite Nigerian foods. Because fitness should taste like
