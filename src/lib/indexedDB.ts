@@ -31,10 +31,13 @@ export async function loadGuestSession(
   return (await db.get(STORE_NAME, category)) || null;
 }
 
-export const clearConversations = async () => {
+export async function clearConversations(category?: string) {
   const db = await getDB();
-  const tx = db.transaction(STORE_NAME, 'readwrite');
-  const store = tx.objectStore(STORE_NAME);
-  await store.clear();
-  await tx.done;
-};
+  if (category) {
+    await db.delete(STORE_NAME, category);
+  } else {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    await tx.objectStore(STORE_NAME).clear();
+    await tx.done;
+  }
+}

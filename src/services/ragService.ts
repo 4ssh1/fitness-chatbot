@@ -8,8 +8,8 @@ import { clientPromise, getMongoDb } from "@/lib/mongodb";
 import fs from "fs";
 import path from "path";
 import { Document } from "@langchain/core/documents";
+import { HistoryItem } from "@/types/chat";
 
-// LLM / Embeddings — module-level singletons are fine (no DB dependency)
 const embeddings = new GoogleGenerativeAIEmbeddings({
   model: "gemini-embedding-001",
   apiKey: process.env.GEMINI_API_KEY,
@@ -21,19 +21,11 @@ const llm = new ChatGoogleGenerativeAI({
   temperature: 0.7,
 });
 
-// Global cache — survives Next.js hot-reloads in dev the same way clientPromise does
-
 declare global {
   var _cachedVectorStore: MongoDBAtlasVectorSearch | undefined;
   var _cachedRetriever: any;
   var _cachedChain: RunnableSequence | undefined;
 }
-
-// Vector store
-// Pass `clientPromise` (the MongoClient promise) directly to
-// MongoDBAtlasVectorSearch instead of a bare collection object.
-// The constructor accepts { collection } OR { clientPromise, dbName, collectionName }.
-// Using clientPromise avoids the internal `.client` access timing issue.
 
 export async function getVectorStore(): Promise<MongoDBAtlasVectorSearch> {
   if (global._cachedVectorStore) {
@@ -43,10 +35,7 @@ export async function getVectorStore(): Promise<MongoDBAtlasVectorSearch> {
   const collectionName = process.env.MONGODB_COLLECTION_NAME || "knowledge_chunks";
   const dbName = process.env.MONGODB_DB_NAME || "rag_db";
 
-  // Wait for the client to be fully connected before handing it to LangChain
   const mongoClient = await clientPromise;
-  // Cast to `any` — LangChain bundles its own mongodb types that may differ
-  // from your installed driver version; they're identical at runtime.
   const collection = mongoClient.db(dbName).collection(collectionName) as any;
 
   global._cachedVectorStore = new MongoDBAtlasVectorSearch(embeddings, {
@@ -59,8 +48,6 @@ export async function getVectorStore(): Promise<MongoDBAtlasVectorSearch> {
   return global._cachedVectorStore;
 }
 
-// Retriever
-
 async function getRetriever() {
   if (global._cachedRetriever) {
     return global._cachedRetriever;
@@ -69,8 +56,6 @@ async function getRetriever() {
   global._cachedRetriever = vectorStore.asRetriever({ k: 4 });
   return global._cachedRetriever;
 }
-
-// RAG chain
 
 async function getChain(): Promise<RunnableSequence> {
   if (global._cachedChain) {
@@ -114,11 +99,7 @@ Answer in a friendly, motivating tone:
   return global._cachedChain;
 }
 
-// Ingest (one-time script, not called at runtime)
-
-
 export async function ingestKnowledgeBase() {
-  // For ingestion we still go through getMongoDb() — that's fine for a script
   const db = await getMongoDb();
   const collection = db.collection(process.env.MONGODB_COLLECTION_NAME || "knowledge_chunks");
   await collection.deleteMany({});
@@ -141,20 +122,19 @@ export async function ingestKnowledgeBase() {
 
     const chunks = await splitter.splitDocuments(docs as any);
     const vectorStore = await getVectorStore();
+    await vectorStore.addDocuments(chunks);
   }
 
   console.log("Knowledge base ingested into MongoDB Vector Search");
 }
 
-// Main export — called per-request
-
-
 export async function askRAG(
   question: string,
-  chatHistory: string = "",
+  history: HistoryItem[] = [],
   categoryHint: string = ""
 ): Promise<ReadableStream> {
   const chain = await getChain();
+  const chatHistory = history.map((h) => `${h.role}: ${h.content}`).join("\n");
 
   const langchainStream = await chain.stream({
     question,
@@ -168,8 +148,7 @@ export async function askRAG(
       try {
         for await (const chunk of langchainStream) {
           if (chunk && typeof chunk === "string") {
-            const encoded = encoder.encode(chunk);
-            controller.enqueue(encoded);
+            controller.enqueue(encoder.encode(chunk));
           } else if (chunk) {
             controller.enqueue(encoder.encode(String(chunk)));
           }

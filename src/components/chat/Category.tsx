@@ -7,6 +7,7 @@ import { FitnessSidebar } from "./Sidebar";
 import { ChatWindow } from "./ChatWindow";
 import { HistoryModal } from "./HistoryModal";
 import { type ChatMessage } from "@/types/chat";
+import { clearConversations } from "@/lib/indexedDB";
 
 export type CategoryType = "all" | "food" | "workouts" | "form";
 
@@ -43,7 +44,16 @@ const Category = () => {
     setMobileSidebarOpen(false);
   };
 
-  const handleNewChat = () => {
+  const handleNewChat = async () => {
+    if (!session) {
+      try {
+        await clearConversations(activeCategory);
+      } catch (err) {
+        console.error("Failed to clear guest session:", err);
+      }
+    }
+    // Authenticated users: just reset the UI — server history stays intact
+    setConversationId(Date.now());
     setMobileSidebarOpen(false);
   };
 

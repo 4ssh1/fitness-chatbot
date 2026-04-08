@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createChatStream } from "@/services/chatService";
+import { askRAG } from "@/services/ragService";
 import { ChatRequestSchema } from "@/validation/user";
 import { ratelimit } from "@/lib/rateLimit";
 import { getServerSession } from "next-auth/next";
@@ -23,7 +23,7 @@ const INJECTION_PATTERNS = [
   /forget (everything|your instructions)/i,
   /act as (a )?(different|new|another)/i,
   /jailbreak/i,
-  /\[INST\]|\[\/INST\]/i, // llama-style injection
+  /\[INST\]|\[\/INST\]/i,
 ];
 
 function isPromptInjection(text: string): boolean {
@@ -33,15 +33,11 @@ function isPromptInjection(text: string): boolean {
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const origin = req.headers.get("origin");
-  const allowedOrigins = [
-    process.env.NEXT_PUBLIC_APP_URL,
-    "http://localhost:3000",
-  ];
+  const allowedOrigins = [process.env.NEXT_PUBLIC_APP_URL, "http://localhost:3000"];
   if (origin && !allowedOrigins.includes(origin)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // declare once at the top
   const cookieStore = await cookies();
   let userId = session?.user?.id || cookieStore.get("userId")?.value;
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0] ?? "anonymous";
@@ -64,14 +60,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const contentLength = req.headers.get("content-length");
-    
-    // Increase limit to 100KB for chat history
-    if (contentLength && parseInt(contentLength) > 100_000) {
+    if (contentLength && parseInt(contentLength) > 16_000) {
       return NextResponse.json({ error: "Request too large" }, { status: 413 });
     }
 
     const body = await req.json();
-    console.log("Request body keys:", Object.keys(body));
     const parsed = ChatRequestSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
@@ -80,9 +73,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { userMessage, category, history, userGender, sessionId } = parsed.data;
+    const { userMessage, category, history } = parsed.data;
 
-    // injection check before anything else
     if (isPromptInjection(userMessage)) {
       return NextResponse.json({ error: "Invalid message content." }, { status: 400 });
     }
@@ -93,22 +85,13 @@ export async function POST(req: NextRequest) {
         ? `\n\nContext hint: the user is asking about ${detectedCategory} — lean towards ${detectedCategory}-related advice where relevant, but still answer the full question.`
         : "";
 
-    // no redeclaration — just check if new
     let isNewUserId = false;
     if (!userId) {
       userId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
       isNewUserId = true;
     }
 
-    const stream = await createChatStream({
-      prompt: userMessage,
-      history,
-      userGender,
-      sessionId,
-      externalUserId: userId,
-      categoryHint,
-      userId: session?.user?.id,
-    });
+    const stream = await askRAG(userMessage, history, categoryHint);
 
     const response = new Response(stream, {
       headers: {

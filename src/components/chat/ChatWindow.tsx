@@ -8,7 +8,8 @@ import { QuickPrompts } from "@/components/chat/QuickPrompts";
 import { useSession, signIn } from "next-auth/react";
 import { MicButton } from "@/components/chat/Mic";
 import { useToast } from "@/hooks/useToast";
-import { saveGuestSession, loadGuestSession, clearConversations } from "@/lib/indexedDB";
+import { saveGuestSession, loadGuestSession } from "@/lib/indexedDB";
+import { clearConversations } from "@/lib/indexedDB";
 
 const MAX_CHARS = 1000;
 
@@ -145,33 +146,6 @@ export function ChatWindow({
     };
     saveMessages();
   }, [messages, session, category, isLoading]);
-
-  // ── New Chat: clear storage and reset messages ──────────────────────────
-  const handleNewChat = async () => {
-    // Stop any ongoing streaming
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    setIsTyping(false);
-    setHasStartedReceiving(false);
-
-    try {
-      if (session) {
-        // Delete from server
-        await fetch(`/api/chat?category=${category}`, { method: "DELETE" });
-      } else {
-        // Delete from IndexedDB
-        await clearConversations();
-      }
-    } catch (err) {
-      showError("Failed to clear chat history.");
-    }
-
-    setMessages([getGreetingMessage(category)]);
-    onNewChat(); // notify parent (e.g., close mobile sidebar)
-    showSuccess("New chat started!");
-  };
 
   // ── Stop streaming (called by UI button) ────────────────────────────────
   const stopStream = useCallback(() => {
