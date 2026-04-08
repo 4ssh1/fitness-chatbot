@@ -10,7 +10,7 @@ export function Footer() {
             <span className="text-2xl font-heading tracking-wider text-naija-yellow">
               GbeBody AI
             </span>
-            <Image src="/favicon.png" alt="GbeBody AI favicon" width={28} height={28} className='size-10' />
+            <Image src="/favicon.png" alt="GbeBody AI favicon" width={28} height={28} className='size-10' loading="eager" />
           </div>
 
           <div className="flex gap-6 font-medium">

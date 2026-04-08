@@ -275,7 +275,7 @@ export function ChatWindow({
   }
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="relative flex flex-col h-dvh w-full bg-black overflow-hidden">
       {/* Sign-in banner */}
       {!session && showSignInBanner && (
         <div className="absolute md:top-0 left-0 right-0 p-4 bg-gray-300 text-center text-naija-dark font-bold flex items-center justify-center z-10 bg-card/90 backdrop-blur-sm border-b border-border">
@@ -329,7 +329,7 @@ export function ChatWindow({
                   placeholder="Ask about workouts, nutrition, technique…"
                   rows={1}
                   disabled={isTyping}
-                  className="flex-1 resize-none bg-transparent px-3 py-3 text-[9px] sm:text-sm text-foreground outline-none sm:max-h-40 placeholder:text-muted-foreground disabled:opacity-50"
+                  className="flex-1 resize-none bg-transparent px-3 py-3 text-[11px] sm:text-sm text-foreground outline-none sm:max-h-40 placeholder:text-muted-foreground disabled:opacity-50"
                 />
                 <MicButton
                   onTranscript={(text) => setInput((prev) => prev + (prev ? " " : "") + text)}
