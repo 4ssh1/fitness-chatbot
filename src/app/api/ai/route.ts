@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const origin = req.headers.get("origin");
   const allowedOrigins = [process.env.NEXT_PUBLIC_APP_URL, "http://localhost:3000"];
+  console.log(allowedOrigins!)
   if (origin && !allowedOrigins.includes(origin)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
