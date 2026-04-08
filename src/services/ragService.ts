@@ -128,23 +128,22 @@ export async function ingestKnowledgeBase() {
   console.log("Knowledge base ingested into MongoDB Vector Search");
 }
 
-export async function askRAG(
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
+
+async function streamWithRetry(
   question: string,
-  history: HistoryItem[] = [],
-  categoryHint: string = ""
+  chatHistory: string,
+  categoryHint: string,
+  attempt = 0
 ): Promise<ReadableStream> {
   const chain = await getChain();
-  const chatHistory = history.map((h) => `${h.role}: ${h.content}`).join("\n");
 
-  const langchainStream = await chain.stream({
-    question,
-    chatHistory,
-    categoryHint,
-  });
+  const langchainStream = await chain.stream({ question, chatHistory, categoryHint });
+  const encoder = new TextEncoder();
 
   return new ReadableStream({
     async start(controller) {
-      const encoder = new TextEncoder();
       try {
         for await (const chunk of langchainStream) {
           if (chunk && typeof chunk === "string") {
@@ -154,9 +153,44 @@ export async function askRAG(
           }
         }
         controller.close();
-      } catch (error) {
-        controller.error(error);
+      } catch (error: any) {
+        const isStreamError =
+          error?.message?.includes("Failed to parse stream") ||
+          error?.message?.includes("fetch failed") ||
+          error?.message?.includes("network");
+
+        if (isStreamError && attempt < MAX_RETRIES) {
+          console.warn(`Gemini stream error (attempt ${attempt + 1}/${MAX_RETRIES}), retrying...`);
+          global._cachedChain = undefined; // force fresh chain on retry
+          controller.close();
+
+          // Wait before retry, then pipe the new stream into this one
+          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+          const retryStream = await streamWithRetry(question, chatHistory, categoryHint, attempt + 1);
+          const reader = retryStream.getReader();
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              controller.enqueue(value);
+            }
+          } finally {
+            reader.releaseLock();
+          }
+        } else {
+          console.error("Gemini stream failed after retries:", error);
+          controller.error(error);
+        }
       }
     },
   });
+}
+
+export async function askRAG(
+  question: string,
+  history: HistoryItem[] = [],
+  categoryHint: string = ""
+): Promise<ReadableStream> {
+  const chatHistory = history.map((h) => `${h.role}: ${h.content}`).join("\n");
+  return streamWithRetry(question, chatHistory, categoryHint);
 }
