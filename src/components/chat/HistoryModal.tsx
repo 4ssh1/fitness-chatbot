@@ -15,6 +15,19 @@ interface HistoryModalProps {
 export function HistoryModal({ isOpen, onClose, history, onSelectHistory, onDeleteHistory }: HistoryModalProps) {
   const [searchTerm, setSearchTerm] = useState("");
 
+  const truncateToWords = (text: string, maxWords: number = 10): string => {
+    const words = text.split(" ");
+    if (words.length > maxWords) {
+      return words.slice(0, maxWords).join(" ") + "…";
+    }
+    return text;
+  };
+
+  const getFirstUserMessage = (messages: ChatMessage[]): string | null => {
+    const firstUserMsg = messages.find(msg => msg.role === "user");
+    return firstUserMsg ? truncateToWords(firstUserMsg.content) : null;
+  };
+
   const filteredHistory = useMemo(() => {
     if (!searchTerm) {
       return history;
@@ -44,7 +57,7 @@ export function HistoryModal({ isOpen, onClose, history, onSelectHistory, onDele
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-700">
           <h2 className="text-lg font-bold text-white">Chat History</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">
+          <button onClick={onClose} className="text-gray-200 hover:text-white">
             <FaTimes />
           </button>
         </div>
@@ -70,13 +83,12 @@ export function HistoryModal({ isOpen, onClose, history, onSelectHistory, onDele
               {historyCategories.map(category => (
                 <div key={category} className="bg-black/50 rounded-lg p-4">
                   <h3 className="font-bold text-white capitalize mb-2">{category}</h3>
-                  <div className="max-h-40 overflow-y-auto space-y-2 scrollbar-thin">
-                    {filteredHistory[category].slice(0, 5).map(msg => (
-                       <div key={msg.id} className="text-sm text-gray-300 truncate">
-                         <strong>{msg.role === 'user' ? 'You: ' : 'AI: '}</strong>
-                         {msg.content}
-                       </div>
-                    ))}
+                  <div className="space-y-2">
+                    {getFirstUserMessage(filteredHistory[category]) && (
+                      <div className="text-sm text-gray-300 line-clamp-2 hover:line-clamp-none cursor-pointer transition-all">
+                        {getFirstUserMessage(filteredHistory[category])}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 mt-2">
                     <button
@@ -84,7 +96,7 @@ export function HistoryModal({ isOpen, onClose, history, onSelectHistory, onDele
                         onSelectHistory(history[category]);
                         onClose();
                       }}
-                      className="text-sm bg-black hover:opacity-80 text-white font-bold py-1 px-3 rounded"
+                      className="text-sm text-black hover:opacity-80 bg-white font-bold py-1 px-3 rounded"
                     >
                       Load Chat
                     </button>
