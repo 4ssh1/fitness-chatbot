@@ -124,7 +124,7 @@ export function ChatWindow({
       }
     };
     loadMessages();
-  }, [category, session?.user?.id, showError]);
+  }, [category, session?.user?.id]);
 
   const isFirstRender = useRef(true);
   useEffect(() => {
