@@ -40,7 +40,7 @@ export function HistoryModal({ isOpen, onClose, history, onSelectHistory, onDele
 
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-      <div className="bg-gray-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+      <div className="bg-black rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-700">
           <h2 className="text-lg font-bold text-white">Chat History</h2>
@@ -68,7 +68,7 @@ export function HistoryModal({ isOpen, onClose, history, onSelectHistory, onDele
           {historyCategories.length > 0 ? (
             <div className="space-y-4">
               {historyCategories.map(category => (
-                <div key={category} className="bg-gray-700/50 rounded-lg p-4">
+                <div key={category} className="bg-black/50 rounded-lg p-4">
                   <h3 className="font-bold text-white capitalize mb-2">{category}</h3>
                   <div className="max-h-40 overflow-y-auto space-y-2 scrollbar-thin">
                     {filteredHistory[category].slice(0, 5).map(msg => (
@@ -84,13 +84,13 @@ export function HistoryModal({ isOpen, onClose, history, onSelectHistory, onDele
                         onSelectHistory(history[category]);
                         onClose();
                       }}
-                      className="text-sm bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded"
+                      className="text-sm bg-black hover:opacity-80 text-white font-bold py-1 px-3 rounded"
                     >
                       Load Chat
                     </button>
                     <button
                       onClick={() => onDeleteHistory(category)}
-                      className="text-sm bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded"
+                      className="text-sm bg-red-700 hover:bg-red-800 text-white font-bold py-1 px-3 rounded"
                     >
                       Delete
                     </button>
