@@ -53,7 +53,6 @@ export function TypingIndicator({ category = "all" }: { category?: string }) {
     <div className="flex flex-col gap-1.5">
       <div className="flex gap-3 items-end animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="size-7 bg-naija-purple rounded-full flex items-center justify-center text-sm border-2 border-border shrink-0">
-          🤖
         </div>
         <div className="bg-muted border border-border rounded-2xl rounded-bl-sm px-4 py-3 flex gap-1.5 items-center h-[38px]">
           <span className="h-2 w-2 rounded-full bg-naija-purple dot-1" />

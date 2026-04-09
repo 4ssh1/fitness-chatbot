@@ -15,11 +15,19 @@ const embeddings = new GoogleGenerativeAIEmbeddings({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
-const llm = new ChatGoogleGenerativeAI({
+const primaryLlm = new ChatGoogleGenerativeAI({
   model: "gemini-2.5-flash",
   apiKey: process.env.GEMINI_API_KEY,
   temperature: 0.7,
 });
+
+const fallbackLlm = new ChatGoogleGenerativeAI({
+  model: "gemini-1.5-flash",
+  apiKey: process.env.GEMINI_API_KEY,
+  temperature: 0.7,
+});
+
+const llmWithFallback = primaryLlm.withFallbacks([fallbackLlm]);
 
 declare global {
   var _cachedVectorStore: MongoDBAtlasVectorSearch | undefined;
@@ -92,7 +100,7 @@ Answer in a friendly, motivating tone:
         input.categoryHint ?? "",
     },
     prompt,
-    llm,
+    llmWithFallback,
     new StringOutputParser(),
   ]);
 
@@ -157,7 +165,10 @@ async function streamWithRetry(
         const isStreamError =
           error?.message?.includes("Failed to parse stream") ||
           error?.message?.includes("fetch failed") ||
-          error?.message?.includes("network");
+          error?.message?.includes("network") ||
+          error?.status === 503 ||                                    
+          error?.message?.includes("503") ||                          
+          error?.message?.includes("currently experiencing high demand");
 
         if (isStreamError && attempt < MAX_RETRIES) {
           console.warn(`Gemini stream error (attempt ${attempt + 1}/${MAX_RETRIES}), retrying...`);

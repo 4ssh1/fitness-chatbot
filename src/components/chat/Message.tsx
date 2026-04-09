@@ -18,18 +18,6 @@ export function ChatMessage({ message }: ChatMessageProps) {
     <div
       className={`msg-animate flex gap-3 ${isUser ? "flex-row-reverse" : "flex-row"} items-end`}
     >
-      {/* Avatar */}
-      {!isUser && (
-        <div className="size-5 bg-naija-yellow rounded-full flex items-center justify-center text-xl border-2 border-naija-dark">
-          🤖
-        </div>
-      )}
-      {isUser && (
-        <div className="shrink-0 h-8 w-8 rounded-full bg-secondary flex items-center justify-center text-xs font-display font-bold text-foreground">
-          U
-        </div>
-      )}
-
       {/* Bubble */}
       <div
         className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
