@@ -63,7 +63,7 @@ export function HistoryModal({ isOpen, onClose, history, onSelectHistory, onDele
         </div>
 
         {/* Search */}
-        <div className="p-4 border-b border-gray-700">
+        <div className="p-4 border-b border-gray-900">
           <div className="relative">
             <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -81,7 +81,7 @@ export function HistoryModal({ isOpen, onClose, history, onSelectHistory, onDele
           {historyCategories.length > 0 ? (
             <div className="space-y-4">
               {historyCategories.map(category => (
-                <div key={category} className="bg-black/50 rounded-lg p-4">
+                <div key={category} className="bg-gray-900 rounded-lg p-4">
                   <h3 className="font-bold text-white capitalize mb-2">{category}</h3>
                   <div className="space-y-2">
                     {getFirstUserMessage(filteredHistory[category]) && (
