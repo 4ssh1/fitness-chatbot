@@ -20,6 +20,14 @@ interface Message {
   timestamp: Date;
 }
 
+const normalizeMessages = (msgs: any[]): Message[] => {
+  return msgs.map((msg) => ({
+    ...msg,
+    timestamp:
+      msg.timestamp instanceof Date ? msg.timestamp : new Date(msg.timestamp),
+  }));
+};
+
 export function ChatWindow({
   category,
   onNewChat,
@@ -97,7 +105,7 @@ export function ChatWindow({
           const res = await fetch(`/api/chat?category=${category}`);
           const data = await res.json();
           if (data.messages && data.messages.length > 0) {
-            setMessages(data.messages);
+            setMessages(normalizeMessages(data.messages));
           } else {
             setMessages([getGreetingMessage(category)]);
           }
@@ -105,7 +113,7 @@ export function ChatWindow({
           // Guest: load from IndexedDB
           const saved = await loadGuestSession(category);
           if (saved && saved.length > 0) {
-            setMessages(saved);
+            setMessages(normalizeMessages(saved));
           } else {
             setMessages([getGreetingMessage(category)]);
           }
