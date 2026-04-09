@@ -100,6 +100,15 @@ export function ChatWindow({
     const loadMessages = async () => {
       setIsLoading(true);
       try {
+        // Check if this is a new chat - skip loading from DB if so
+        const isNewChat = sessionStorage.getItem(`newChat_${category}`) === "true";
+        if (isNewChat) {
+          sessionStorage.removeItem(`newChat_${category}`);
+          setMessages([getGreetingMessage(category)]);
+          setIsLoading(false);
+          return;
+        }
+
         if (session) {
           const res = await fetch(`/api/chat?category=${category}`);
           const data = await res.json();

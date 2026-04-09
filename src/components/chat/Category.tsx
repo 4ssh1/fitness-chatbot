@@ -52,8 +52,10 @@ const Category = () => {
       } catch (err) {
         console.error("Failed to clear guest session:", err);
       }
+    } else {
+      // Mark this as a new chat so ChatWindow skips loading from DB
+      sessionStorage.setItem(`newChat_${activeCategory}`, "true");
     }
-    // Authenticated users: just reset the UI — server history stays intact
     setConversationId(Date.now());
     setMobileSidebarOpen(false);
   };
@@ -66,6 +68,8 @@ const Category = () => {
   const handleSelectHistory = (selectedMessages: ChatMessage[], category: string) => {
     setActiveCategory(category as CategoryType);
     sessionStorage.setItem("activeCategory", category);
+    // Clear the new chat flag when selecting from history
+    sessionStorage.removeItem(`newChat_${category}`);
     setConversationId(Date.now());
     setIsHistoryOpen(false);
   };
