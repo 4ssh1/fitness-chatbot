@@ -6,16 +6,6 @@ import { ratelimit } from "@/lib/rateLimit";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 
-function detectCategory(text: string): string {
-  if (/(food|eat|meal|protein|calorie|macro|nutrition|diet|carb|fat|cook|recipe)/i.test(text))
-    return "food";
-  if (/(workout|exercise|training|lift|gym|cardio|split|program|rep|set|push|pull)/i.test(text))
-    return "workouts";
-  if (/(form|technique|cue|squat|deadlift|bench|posture|movement|hinge|mistake)/i.test(text))
-    return "form";
-  return "all";
-}
-
 const INJECTION_PATTERNS = [
   /ignore (previous|prior|all) instructions/i,
   /system prompt/i,
@@ -79,19 +69,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid message content." }, { status: 400 });
     }
 
-    const detectedCategory = category === "all" ? detectCategory(userMessage) : category;
-    const categoryHint =
-      detectedCategory !== "all"
-        ? `\n\nContext hint: the user is asking about ${detectedCategory} — lean towards ${detectedCategory}-related advice where relevant, but still answer the full question.`
-        : "";
-
     let isNewUserId = false;
     if (!userId) {
       userId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
       isNewUserId = true;
     }
 
-    const stream = await askRAG(userMessage, history, categoryHint);
+    const stream = await askRAG(userMessage, history, category);
 
     const response = new Response(stream, {
       headers: {

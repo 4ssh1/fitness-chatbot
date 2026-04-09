@@ -18,6 +18,7 @@ const Category = () => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [history, setHistory] = useState<Record<string, ChatMessage[]>>({});
   const [conversationId, setConversationId] = useState(Date.now());
+  const [isNewChat, setIsNewChat] = useState(true);
   const { data: session } = useSession();
 
   useEffect(() => {
@@ -41,8 +42,10 @@ const Category = () => {
   const handleCategoryChange = (cat: CategoryType) => {
     setActiveCategory(cat);
     sessionStorage.setItem("activeCategory", cat);
-    setConversationId(Date.now());
     setMobileSidebarOpen(false);
+    // Switching category = fresh UI, don't load old history
+    setIsNewChat(true);
+    setConversationId(Date.now());
   };
 
   const handleNewChat = async () => {
@@ -52,10 +55,9 @@ const Category = () => {
       } catch (err) {
         console.error("Failed to clear guest session:", err);
       }
-    } else {
-      // Mark this as a new chat so ChatWindow skips loading from DB
-      sessionStorage.setItem(`newChat_${activeCategory}`, "true");
     }
+    // Signal ChatWindow to show greeting, not load history
+    setIsNewChat(true);
     setConversationId(Date.now());
     setMobileSidebarOpen(false);
   };
@@ -65,11 +67,11 @@ const Category = () => {
     setMobileSidebarOpen(false);
   };
 
-  const handleSelectHistory = (selectedMessages: ChatMessage[], category: string) => {
-    setActiveCategory(category as CategoryType);
-    sessionStorage.setItem("activeCategory", category);
-    // Clear the new chat flag when selecting from history
-    sessionStorage.removeItem(`newChat_${category}`);
+  const handleSelectHistory = (selectedMessages: ChatMessage[], categoryKey: string) => {
+    setActiveCategory(categoryKey as CategoryType);
+    sessionStorage.setItem("activeCategory", categoryKey);
+    // Signal ChatWindow to load history from server
+    setIsNewChat(false);
     setConversationId(Date.now());
     setIsHistoryOpen(false);
   };
@@ -83,7 +85,6 @@ const Category = () => {
       });
 
       if (response.ok) {
-        // Optimistically update UI
         const newHistory = { ...history };
         delete newHistory[categoryToDelete];
         setHistory(newHistory);
@@ -140,6 +141,7 @@ const Category = () => {
         <ChatWindow
           key={conversationId}
           category={activeCategory}
+          isNewChat={isNewChat}
           onNewChat={handleNewChat}
         />
       </main>

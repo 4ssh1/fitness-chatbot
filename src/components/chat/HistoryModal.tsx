@@ -8,41 +8,38 @@ interface HistoryModalProps {
   isOpen: boolean;
   onClose: () => void;
   history: Record<string, ChatMessage[]>;
-  onSelectHistory: (messages: ChatMessage[], category: string) => void;
+  onSelectHistory: (messages: ChatMessage[], categoryKey: string) => void;
   onDeleteHistory: (category: string) => void;
 }
 
-export function HistoryModal({ isOpen, onClose, history, onSelectHistory, onDeleteHistory }: HistoryModalProps) {
+export function HistoryModal({
+  isOpen,
+  onClose,
+  history,
+  onSelectHistory,
+  onDeleteHistory,
+}: HistoryModalProps) {
   const [searchTerm, setSearchTerm] = useState("");
 
-  const truncateToWords = (text: string, maxWords: number = 10): string => {
+  const truncateToWords = (text: string, maxWords = 10): string => {
     const words = text.split(" ");
-    if (words.length > maxWords) {
-      return words.slice(0, maxWords).join(" ") + "…";
-    }
-    return text;
+    return words.length > maxWords ? words.slice(0, maxWords).join(" ") + "…" : text;
   };
 
   const getFirstUserMessage = (messages: ChatMessage[]): string | null => {
-    const firstUserMsg = messages.find(msg => msg.role === "user");
+    const firstUserMsg = messages.find((msg) => msg.role === "user");
     return firstUserMsg ? truncateToWords(firstUserMsg.content) : null;
   };
 
   const filteredHistory = useMemo(() => {
-    if (!searchTerm) {
-      return history;
-    }
-    const lowercasedFilter = searchTerm.toLowerCase();
+    if (!searchTerm) return history;
+    const lower = searchTerm.toLowerCase();
     const filtered: Record<string, ChatMessage[]> = {};
-
     for (const category in history) {
-      const messages = history[category];
-      const hasMatch = messages.some(msg =>
-        msg.content.toLowerCase().includes(lowercasedFilter)
+      const hasMatch = history[category].some((msg) =>
+        msg.content.toLowerCase().includes(lower)
       );
-      if (hasMatch) {
-        filtered[category] = messages;
-      }
+      if (hasMatch) filtered[category] = history[category];
     }
     return filtered;
   }, [searchTerm, history]);
@@ -80,17 +77,15 @@ export function HistoryModal({ isOpen, onClose, history, onSelectHistory, onDele
         <div className="flex-1 overflow-y-auto p-4">
           {historyCategories.length > 0 ? (
             <div className="space-y-4">
-              {historyCategories.map(category => (
+              {historyCategories.map((category) => (
                 <div key={category} className="bg-gray-900 rounded-lg p-4">
                   <h3 className="font-bold text-white capitalize mb-2">{category}</h3>
-                  <div className="space-y-2">
-                    {getFirstUserMessage(filteredHistory[category]) && (
-                      <div className="text-sm text-gray-300 line-clamp-2 hover:line-clamp-none cursor-pointer transition-all">
-                        {getFirstUserMessage(filteredHistory[category])}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 mt-2">
+                  {getFirstUserMessage(filteredHistory[category]) && (
+                    <div className="text-sm text-gray-300 line-clamp-2 hover:line-clamp-none cursor-pointer transition-all mb-2">
+                      {getFirstUserMessage(filteredHistory[category])}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={() => {
                         onSelectHistory(history[category], category);

@@ -10,6 +10,45 @@ import path from "path";
 import { Document } from "@langchain/core/documents";
 import { HistoryItem } from "@/types/chat";
 
+export type CategoryType = "all" | "food" | "workouts" | "form";
+
+// ── Category config ───────────────────────────────────────────────────────────
+// Maps each category to: which knowledge-base source files are relevant
+
+const CATEGORY_CONFIG: Record<
+  CategoryType,
+  { sources: string[]; persona: string }
+> = {
+  all: {
+    sources: ["foods.json", "meal-plan.json", "workout.json", "form-guides.json"],
+    persona: `You are Gbebody AI — a friendly, motivating fitness and nutrition coach specialised in Nigerian foods and workout culture.
+You cover all topics: workouts, nutrition, meal planning, exercise form, and healthy lifestyle.
+Always tie advice back to practical Nigerian context where relevant (local foods, gym culture, NEPA cuts, etc).`,
+  },
+  food: {
+    sources: ["foods.json", "meal-plan.json"],
+    persona: `You are Gbebody AI in Nutrition Mode — a diet coach who specialises in Nigerian foods and evidence-based nutrition.
+Focus ONLY on: meal plans, macros, calories, Nigerian food nutrition profiles, pre/post-workout nutrition, healthy recipes, and weight-management through diet.
+If the user asks something unrelated to food or nutrition, gently redirect them:
+"That's outside my nutrition lane — try switching to the Workouts or Form & Technique category for that!"`,
+  },
+  workouts: {
+    sources: ["workout.json"],
+    persona: `You are Gbebody AI in Workout Mode — a strength and conditioning coach.
+Focus ONLY on: training programmes, workout splits, progressive overload, cardio, exercise selection, sets/reps/intensity, and recovery.
+If the user asks something unrelated to workouts or training, gently redirect them:
+"That's more of a nutrition or form question — switch categories and I'll have you covered!"`,
+  },
+  form: {
+    sources: ["form-guides.json"],
+    persona: `You are Gbebody AI in Form & Technique Mode — a movement specialist and injury-prevention coach.
+Focus ONLY on: proper exercise technique, movement cues, common form mistakes, injury prevention, mobility, and warm-up drills.
+If the user asks something unrelated to exercise form or technique, gently redirect them:
+"That sounds like a workout programming or nutrition question — flip to the right category and let's go! "`,
+  },
+};
+
+
 const embeddings = new GoogleGenerativeAIEmbeddings({
   model: "gemini-embedding-001",
   apiKey: process.env.GEMINI_API_KEY,
@@ -29,19 +68,21 @@ const fallbackLlm = new ChatGoogleGenerativeAI({
 
 const llmWithFallback = primaryLlm.withFallbacks([fallbackLlm]);
 
+
 declare global {
   var _cachedVectorStore: MongoDBAtlasVectorSearch | undefined;
-  var _cachedRetriever: any;
-  var _cachedChain: RunnableSequence | undefined;
+  // Per-category chain cache — keyed by CategoryType
+  var _cachedChains: Partial<Record<CategoryType, RunnableSequence>> | undefined;
 }
+// ── Vector store (shared across categories) ───────────────────────────────────
 
 export async function getVectorStore(): Promise<MongoDBAtlasVectorSearch> {
   if (global._cachedVectorStore) {
     return global._cachedVectorStore;
   }
 
-  const collectionName = process.env.MONGODB_COLLECTION_NAME!;
-  const dbName = process.env.MONGODB_DB_NAME;
+  const collectionName = process.env.MONGODB_COLLECTION_NAME || "knowledge_chunks";
+  const dbName = process.env.MONGODB_DB_NAME || "rag_db";
 
   const mongoClient = await clientPromise;
   const collection = mongoClient.db(dbName).collection(collectionName) as any;
@@ -56,55 +97,84 @@ export async function getVectorStore(): Promise<MongoDBAtlasVectorSearch> {
   return global._cachedVectorStore;
 }
 
-async function getRetriever() {
-  if (global._cachedRetriever) {
-    return global._cachedRetriever;
-  }
-  const vectorStore = await getVectorStore();
-  global._cachedRetriever = vectorStore.asRetriever({ k: 4 });
-  return global._cachedRetriever;
+// ── Category-aware retriever ───────────────────────────────────────────────────
+// Filters retrieved chunks to only the source files relevant to the active category.
+
+function getRetriever(category: CategoryType) {
+  const { sources } = CATEGORY_CONFIG[category];
+
+  return {
+    invoke: async (question: string): Promise<Document[]> => {
+      const vectorStore = await getVectorStore();
+
+      if (category === "all") {
+        // No filter — retrieve from all sources
+        const retriever = vectorStore.asRetriever({ k: 5 });
+        return retriever.invoke(question);
+      }
+
+      // Pre-filter by metadata.source so retrieval stays on-topic
+      const retriever = vectorStore.asRetriever({
+        k: 5,
+        filter: {
+          preFilter: {
+            source: { $in: sources },
+          },
+        },
+      });
+
+      return retriever.invoke(question);
+    },
+  };
 }
 
-async function getChain(): Promise<RunnableSequence> {
-  if (global._cachedChain) {
-    return global._cachedChain;
-  }
+async function getChain(category: CategoryType): Promise<RunnableSequence> {
+  if (!global._cachedChains) global._cachedChains = {};
+  if (global._cachedChains[category]) return global._cachedChains[category]!;
 
-  const retriever = await getRetriever();
+  const retriever = getRetriever(category);
+  const { persona } = CATEGORY_CONFIG[category];
 
   const prompt = PromptTemplate.fromTemplate(`
-You are a helpful fitness and nutrition assistant specialized in Nigerian foods and workout plans.
+{persona}
 
-Use the context below if it's relevant. If the context doesn't cover the question, answer from your own fitness knowledge — do NOT say you don't have enough information.
-{categoryHint}
+Use the knowledge base context below when it is relevant. If the context doesn't fully cover the question, answer from your own expertise — do NOT say you lack information.
 
-Context: {context}
+--- Knowledge Base Context ---
+{context}
+--- End Context ---
 
-Chat History: {chatHistory}
+Chat History:
+{chatHistory}
 
-Question: {question}
-Answer in a friendly, motivating tone:
-`);
+User: {question}
+Assistant:`);
 
-  global._cachedChain = RunnableSequence.from([
+  global._cachedChains[category] = RunnableSequence.from([
     {
-      context: async (input: { question: string; chatHistory?: string; categoryHint?: string }) => {
+      context: async (input: {
+        question: string;
+        chatHistory: string;
+        persona: string;
+      }) => {
         const docs = await retriever.invoke(input.question);
-        return docs.map((d: Document) => d.pageContent).join("\n\n");
+        return docs.length > 0
+          ? docs.map((d: Document) => d.pageContent).join("\n\n")
+          : "No specific context found — answer from general fitness knowledge.";
       },
-      chatHistory: (input: { question: string; chatHistory?: string; categoryHint?: string }) =>
-        input.chatHistory ?? "",
-      question: (input: { question: string; chatHistory?: string; categoryHint?: string }) =>
+      chatHistory: (input: { question: string; chatHistory: string; persona: string }) =>
+        input.chatHistory,
+      question: (input: { question: string; chatHistory: string; persona: string }) =>
         input.question,
-      categoryHint: (input: { question: string; chatHistory?: string; categoryHint?: string }) =>
-        input.categoryHint ?? "",
+      persona: (input: { question: string; chatHistory: string; persona: string }) =>
+        input.persona,
     },
     prompt,
     llmWithFallback,
     new StringOutputParser(),
   ]);
 
-  return global._cachedChain;
+  return global._cachedChains[category]!;
 }
 
 export async function ingestKnowledgeBase() {
@@ -123,6 +193,7 @@ export async function ingestKnowledgeBase() {
     const filePath = path.join(process.cwd(), "src", "data", file);
     const fileContent = fs.readFileSync(filePath, "utf-8");
     const data = JSON.parse(fileContent);
+
     const docs = Object.entries(data).map(([key, value]) => ({
       pageContent: JSON.stringify(value),
       metadata: { source: file, type: key },
@@ -142,12 +213,17 @@ const RETRY_DELAY_MS = 1000;
 async function streamWithRetry(
   question: string,
   chatHistory: string,
-  categoryHint: string,
+  category: CategoryType,
   attempt = 0
 ): Promise<ReadableStream> {
-  const chain = await getChain();
+  const { persona } = CATEGORY_CONFIG[category];
+  const chain = await getChain(category);
 
-  const langchainStream = await chain.stream({ question, chatHistory, categoryHint });
+  if (attempt > 0 && global._cachedChains) {
+    delete global._cachedChains[category];
+  }
+
+  const langchainStream = await chain.stream({ question, chatHistory, persona });
   const encoder = new TextEncoder();
 
   return new ReadableStream({
@@ -166,18 +242,17 @@ async function streamWithRetry(
           error?.message?.includes("Failed to parse stream") ||
           error?.message?.includes("fetch failed") ||
           error?.message?.includes("network") ||
-          error?.status === 503 ||                                    
-          error?.message?.includes("503") ||                          
+          error?.status === 503 ||
+          error?.message?.includes("503") ||
+          error?.status === 429||
           error?.message?.includes("currently experiencing high demand");
 
         if (isStreamError && attempt < MAX_RETRIES) {
           console.warn(`Gemini stream error (attempt ${attempt + 1}/${MAX_RETRIES}), retrying...`);
-          global._cachedChain = undefined; // force fresh chain on retry
           controller.close();
 
-          // Wait before retry, then pipe the new stream into this one
           await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
-          const retryStream = await streamWithRetry(question, chatHistory, categoryHint, attempt + 1);
+          const retryStream = await streamWithRetry(question, chatHistory, category, attempt + 1);
           const reader = retryStream.getReader();
           try {
             while (true) {
@@ -200,8 +275,8 @@ async function streamWithRetry(
 export async function askRAG(
   question: string,
   history: HistoryItem[] = [],
-  categoryHint: string = ""
+  category: CategoryType = "all"
 ): Promise<ReadableStream> {
   const chatHistory = history.map((h) => `${h.role}: ${h.content}`).join("\n");
-  return streamWithRetry(question, chatHistory, categoryHint);
+  return streamWithRetry(question, chatHistory, category);
 }

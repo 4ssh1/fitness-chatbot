@@ -8,8 +8,7 @@ import { QuickPrompts } from "@/components/chat/QuickPrompts";
 import { useSession, signIn } from "next-auth/react";
 import { MicButton } from "@/components/chat/Mic";
 import { useToast } from "@/hooks/useToast";
-import { saveGuestSession, loadGuestSession } from "@/lib/indexedDB";
-import { clearConversations } from "@/lib/indexedDB";
+import { saveGuestSession, loadGuestSession, clearConversations } from "@/lib/indexedDB";
 
 const MAX_CHARS = 1000;
 
@@ -30,9 +29,11 @@ const normalizeMessages = (msgs: any[]): Message[] => {
 
 export function ChatWindow({
   category,
+  isNewChat,
   onNewChat,
 }: {
   category: "all" | "food" | "workouts" | "form";
+  isNewChat: boolean;
   onNewChat: () => void;
 }) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -46,8 +47,9 @@ export function ChatWindow({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const { data: session } = useSession();
-  const { showSuccess, showError } = useToast();
+  const { showError } = useToast();
 
+  // ── Guest: clear IndexedDB on fresh browser open (not reload) ───────────
   useEffect(() => {
     if (session) return;
 
@@ -59,7 +61,6 @@ export function ChatWindow({
       if (sessionStorage.getItem("isReloading")) {
         sessionStorage.removeItem("isReloading");
       } else {
-        // This case handles when the browser is closed and reopened
         clearConversations();
       }
     };
@@ -67,7 +68,6 @@ export function ChatWindow({
     window.addEventListener("beforeunload", handleBeforeUnload);
     window.addEventListener("load", handleLoad);
 
-    // This handles the initial load of a new session
     if (!sessionStorage.getItem("isReloading")) {
       clearConversations();
     }
@@ -78,7 +78,7 @@ export function ChatWindow({
     };
   }, [session]);
 
-  // ── Helper: get greeting message for a category ─────────────────────────
+  // ── Helper: greeting message per category ───────────────────────────────
   const getGreetingMessage = (cat: string): Message => {
     const greetings: Record<string, string> = {
       all: "Hey! I'm **Gbebody AI**, your personal fitness assistant \n\n What's your goal today?",
@@ -95,17 +95,16 @@ export function ChatWindow({
     };
   };
 
-  // ── Load messages on mount / category change / session change ───────────
+  // ── Load messages on mount ───────────────────────────────────────────────
+  // - isNewChat=true  → always show greeting, never fetch history
+  // - isNewChat=false → load history from server (auth) or IndexedDB (guest)
   useEffect(() => {
     const loadMessages = async () => {
       setIsLoading(true);
       try {
-        // Check if this is a new chat - skip loading from DB if so
-        const isNewChat = sessionStorage.getItem(`newChat_${category}`) === "true";
         if (isNewChat) {
-          sessionStorage.removeItem(`newChat_${category}`);
+          // Fresh start — just show greeting regardless of auth state
           setMessages([getGreetingMessage(category)]);
-          setIsLoading(false);
           return;
         }
 
@@ -132,9 +131,14 @@ export function ChatWindow({
         setIsLoading(false);
       }
     };
-    loadMessages();
-  }, [category, session?.user?.id]);
 
+    loadMessages();
+  // isNewChat and category come from the key-remounted instance, so this
+  // only runs once on mount — which is exactly what we want
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Save messages whenever they change ──────────────────────────────────
   const isFirstRender = useRef(true);
   useEffect(() => {
     if (isFirstRender.current) {
@@ -142,6 +146,10 @@ export function ChatWindow({
       return;
     }
     if (isLoading) return;
+
+    // Don't persist a fresh chat that only has the greeting
+    const hasRealMessages = messages.some((m) => m.role === "user");
+    if (!hasRealMessages) return;
 
     const saveMessages = async () => {
       try {
@@ -158,10 +166,11 @@ export function ChatWindow({
         showError("Failed to save chat. Your latest messages might not be saved.");
       }
     };
+
     saveMessages();
   }, [messages, session, category, isLoading]);
 
-  // ── Stop streaming (called by UI button) ────────────────────────────────
+  // ── Stop streaming ───────────────────────────────────────────────────────
   const stopStream = useCallback(() => {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
@@ -169,7 +178,7 @@ export function ChatWindow({
     setHasStartedReceiving(false);
   }, []);
 
-  // ── Send message with streaming ──────────────────────────────────────────
+  // ── Send message ─────────────────────────────────────────────────────────
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
@@ -256,7 +265,7 @@ export function ChatWindow({
         setHasStartedReceiving(false);
       }
     },
-    [isTyping, session, category, messages]
+    [isTyping, session, category, messages, hasStartedReceiving]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -313,7 +322,7 @@ export function ChatWindow({
       )}
 
       <div className="flex-1 flex flex-col bg-black relative min-h-0">
-        {/* Messages container */}
+        {/* Messages */}
         <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin px-4 py-6 space-y-2">
           {messages.map((msg) => {
             if (msg.role === "assistant" && msg.content === "" && isTyping) return null;
@@ -352,8 +361,9 @@ export function ChatWindow({
               </div>
               {nearLimit && (
                 <p
-                  className={`text-right text-[10px] px-3 pb-1.5 transition-colors ${atLimit ? "text-destructive font-semibold" : "text-muted-foreground"
-                    }`}
+                  className={`text-right text-[10px] px-3 pb-1.5 transition-colors ${
+                    atLimit ? "text-destructive font-semibold" : "text-muted-foreground"
+                  }`}
                 >
                   {atLimit ? "Character limit reached" : `${charsLeft} left`}
                 </p>
