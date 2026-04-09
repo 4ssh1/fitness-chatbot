@@ -41,6 +41,7 @@ const Category = () => {
   const handleCategoryChange = (cat: CategoryType) => {
     setActiveCategory(cat);
     sessionStorage.setItem("activeCategory", cat);
+    setConversationId(Date.now());
     setMobileSidebarOpen(false);
   };
 
@@ -62,11 +63,9 @@ const Category = () => {
     setMobileSidebarOpen(false);
   };
 
-  const handleSelectHistory = (selectedMessages: ChatMessage[]) => {
-    const categoryOfHistory = Object.keys(history).find(key => history[key] === selectedMessages);
-    if (categoryOfHistory) {
-      setActiveCategory(categoryOfHistory as CategoryType);
-    }
+  const handleSelectHistory = (selectedMessages: ChatMessage[], category: string) => {
+    setActiveCategory(category as CategoryType);
+    sessionStorage.setItem("activeCategory", category);
     setConversationId(Date.now());
     setIsHistoryOpen(false);
   };

@@ -8,7 +8,7 @@ interface HistoryModalProps {
   isOpen: boolean;
   onClose: () => void;
   history: Record<string, ChatMessage[]>;
-  onSelectHistory: (messages: ChatMessage[]) => void;
+  onSelectHistory: (messages: ChatMessage[], category: string) => void;
   onDeleteHistory: (category: string) => void;
 }
 
@@ -93,7 +93,7 @@ export function HistoryModal({ isOpen, onClose, history, onSelectHistory, onDele
                   <div className="flex items-center gap-2 mt-2">
                     <button
                       onClick={() => {
-                        onSelectHistory(history[category]);
+                        onSelectHistory(history[category], category);
                         onClose();
                       }}
                       className="text-sm text-black hover:opacity-80 bg-white font-bold py-1 px-3 rounded"

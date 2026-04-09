@@ -40,8 +40,8 @@ export async function getVectorStore(): Promise<MongoDBAtlasVectorSearch> {
     return global._cachedVectorStore;
   }
 
-  const collectionName = process.env.MONGODB_COLLECTION_NAME || "knowledge_chunks";
-  const dbName = process.env.MONGODB_DB_NAME || "rag_db";
+  const collectionName = process.env.MONGODB_COLLECTION_NAME!;
+  const dbName = process.env.MONGODB_DB_NAME;
 
   const mongoClient = await clientPromise;
   const collection = mongoClient.db(dbName).collection(collectionName) as any;
@@ -109,7 +109,7 @@ Answer in a friendly, motivating tone:
 
 export async function ingestKnowledgeBase() {
   const db = await getMongoDb();
-  const collection = db.collection(process.env.MONGODB_COLLECTION_NAME || "knowledge_chunks");
+  const collection = db.collection(process.env.MONGODB_COLLECTION_NAME!);
   await collection.deleteMany({});
 
   const files = ["foods.json", "meal-plan.json", "workout.json", "form-guides.json"];

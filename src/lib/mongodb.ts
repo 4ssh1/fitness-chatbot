@@ -1,7 +1,7 @@
 import { MongoClient } from "mongodb";
 
 const DATABASE_URL = process.env.DATABASE_URL!;
-const DB_NAME = process.env.MONGODB_DB_NAME || "rag_db";
+const DB_NAME = process.env.MONGODB_DB_NAME!;
 
 if (!DATABASE_URL) {
   throw new Error("Please define the DATABASE_URL environment variable");
