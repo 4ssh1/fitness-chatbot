@@ -50,9 +50,16 @@ export function useSpeechRecognition({
   const [error, setError] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
-  const isSupported =
+  const onTranscriptRef = useRef(onTranscript);
+  useEffect(() => {
+    onTranscriptRef.current = onTranscript;
+  }, [onTranscript]);
+
+  const isSupportedRef = useRef(
     typeof window !== "undefined" &&
-    ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
+      ("SpeechRecognition" in window || "webkitSpeechRecognition" in window)
+  );
+  const isSupported = isSupportedRef.current;
 
   const stop = useCallback(() => {
     recognitionRef.current?.stop();
@@ -80,7 +87,7 @@ export function useSpeechRecognition({
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
       const transcript = event.results[0][0].transcript;
-      onTranscript(transcript);
+      onTranscriptRef.current(transcript);
     };
 
     recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
@@ -101,7 +108,7 @@ export function useSpeechRecognition({
 
     recognitionRef.current = recognition;
     recognition.start();
-  }, [isSupported, lang, onTranscript]);
+  }, [isSupported, lang]); 
 
   // Cleanup on unmount
   useEffect(() => {

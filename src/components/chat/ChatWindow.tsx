@@ -48,24 +48,34 @@ export function ChatWindow({
   const { data: session } = useSession();
   const { showSuccess, showError } = useToast();
 
-  // ── Fix 1: Guest session cleanup — removed dead `load` listener,
-  //    only register beforeunload and check sessionStorage on mount ────────
   useEffect(() => {
     if (session) return;
-
-    const isReload = sessionStorage.getItem("isReloading");
-    if (!isReload) {
-      clearConversations();
-    } else {
-      sessionStorage.removeItem("isReloading");
-    }
 
     const handleBeforeUnload = () => {
       sessionStorage.setItem("isReloading", "true");
     };
 
+    const handleLoad = () => {
+      if (sessionStorage.getItem("isReloading")) {
+        sessionStorage.removeItem("isReloading");
+      } else {
+        // This case handles when the browser is closed and reopened
+        clearConversations();
+      }
+    };
+
     window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("load", handleLoad);
+
+    // This handles the initial load of a new session
+    if (!sessionStorage.getItem("isReloading")) {
+      clearConversations();
+    }
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("load", handleLoad);
+    };
   }, [session]);
 
   // ── Helper: get greeting message for a category ─────────────────────────
@@ -116,8 +126,6 @@ export function ChatWindow({
     loadMessages();
   }, [category, session?.user?.id, showError]);
 
-  // ── Fix 2: Save messages debounced — skip initial render, skip while
-  //    loading, and wait 1 s after the last change (covers streaming chunks)
   const isFirstRender = useRef(true);
   useEffect(() => {
     if (isFirstRender.current) {
@@ -126,7 +134,7 @@ export function ChatWindow({
     }
     if (isLoading) return;
 
-    const timer = setTimeout(async () => {
+    const saveMessages = async () => {
       try {
         if (session) {
           await fetch("/api/chat", {
@@ -140,9 +148,8 @@ export function ChatWindow({
       } catch (err) {
         showError("Failed to save chat. Your latest messages might not be saved.");
       }
-    }, 1000); // debounce: only save 1 s after the last state update
-
-    return () => clearTimeout(timer);
+    };
+    saveMessages();
   }, [messages, session, category, isLoading]);
 
   // ── Stop streaming (called by UI button) ────────────────────────────────
@@ -315,7 +322,7 @@ export function ChatWindow({
         )}
 
         {/* Input area */}
-        <div className="border-t border-border bg-card/50 backdrop-blur-sm px-3 sm:px-4 py-5 md:py-3">
+        <div className="border-t border-border bg-card/50 backdrop-blur-sm px-3 sm:px-4 py-3">
           <div className="flex items-end gap-2 max-w-3xl mx-auto">
             <div className="flex flex-1 flex-col rounded-xl border border-border bg-muted focus-within:border-primary transition-colors">
               <div className="flex items-end gap-1">
@@ -327,7 +334,7 @@ export function ChatWindow({
                   placeholder="Ask about workouts, nutrition, technique…"
                   rows={1}
                   disabled={isTyping}
-                  className="flex-1 resize-none bg-transparent px-3 py-3 text-[1 1px] sm:text-sm text-foreground outline-none sm:max-h-40 placeholder:text-muted-foreground disabled:opacity-50"
+                  className="flex-1 resize-none bg-transparent px-3 py-3 text-[11px] sm:text-sm text-foreground outline-none sm:max-h-40 placeholder:text-muted-foreground disabled:opacity-50"
                 />
                 <MicButton
                   onTranscript={(text) => setInput((prev) => prev + (prev ? " " : "") + text)}
@@ -336,9 +343,8 @@ export function ChatWindow({
               </div>
               {nearLimit && (
                 <p
-                  className={`text-right text-[10px] px-3 pb-1.5 transition-colors ${
-                    atLimit ? "text-destructive font-semibold" : "text-muted-foreground"
-                  }`}
+                  className={`text-right text-[10px] px-3 pb-1.5 transition-colors ${atLimit ? "text-destructive font-semibold" : "text-muted-foreground"
+                    }`}
                 >
                   {atLimit ? "Character limit reached" : `${charsLeft} left`}
                 </p>
