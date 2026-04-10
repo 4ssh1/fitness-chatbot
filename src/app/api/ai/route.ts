@@ -29,7 +29,9 @@ export async function POST(req: NextRequest) {
   }
 
   const cookieStore = await cookies();
-  let userId = session?.user?.id || cookieStore.get("userId")?.value;
+  const guestCookieId = !session ? cookieStore.get("userId")?.value : undefined;
+  let userId = session?.user?.id || guestCookieId;
+
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0] ?? "anonymous";
   const identifier = userId ?? ip;
 
@@ -75,9 +77,19 @@ export async function POST(req: NextRequest) {
       isNewUserId = true;
     }
 
+    if (isNewUserId) {
+      cookieStore.set("userId", userId, {
+        maxAge: 60 * 60 * 24 * 365,
+        path: "/",
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+      });
+    }
+
     const stream = await askRAG(userMessage, history, category);
 
-    const response = new Response(stream, {
+    return new Response(stream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Transfer-Encoding": "chunked",
@@ -85,17 +97,6 @@ export async function POST(req: NextRequest) {
         "X-Is-New-User": isNewUserId ? "true" : "false",
       },
     });
-
-    if (isNewUserId) {
-      response.headers.append(
-        "Set-Cookie",
-        `userId=${userId}; Max-Age=${60 * 60 * 24 * 365}; Path=/; HttpOnly; SameSite=Lax${
-          process.env.NODE_ENV === "production" ? "; Secure" : ""
-        }`
-      );
-    }
-
-    return response;
   } catch (error: any) {
     console.error("API error:", error);
     return NextResponse.json(
