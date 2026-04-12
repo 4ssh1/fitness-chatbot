@@ -8,7 +8,7 @@ import { QuickPrompts } from "@/components/chat/QuickPrompts";
 import { useSession, signIn } from "next-auth/react";
 import { MicButton } from "@/components/chat/Mic";
 import { useToast } from "@/hooks/useToast";
-import { saveGuestSession, loadGuestSession, clearConversations } from "@/lib/indexedDB";
+import { type ChatSession } from "./Category";
 
 const MAX_CHARS = 1000;
 
@@ -19,23 +19,20 @@ interface Message {
   timestamp: Date;
 }
 
-const normalizeMessages = (msgs: any[]): Message[] => {
-  return msgs.map((msg) => ({
+const normalizeMessages = (msgs: any[]): Message[] =>
+  msgs.map((msg) => ({
     ...msg,
-    timestamp:
-      msg.timestamp instanceof Date ? msg.timestamp : new Date(msg.timestamp),
+    timestamp: msg.timestamp instanceof Date ? msg.timestamp : new Date(msg.timestamp),
   }));
-};
 
-export function ChatWindow({
-  category,
-  isNewChat,
-  onNewChat,
-}: {
+interface ChatWindowProps {
+  sessionId: string;
   category: "all" | "food" | "workouts" | "form";
-  isNewChat: boolean;
   onNewChat: () => void;
-}) {
+  onSessionSaved: (session: ChatSession) => void;
+}
+
+export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -46,39 +43,16 @@ export function ChatWindow({
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Track whether we've already saved a title for this session to avoid
+  // overwriting it on subsequent saves (title is set on first user message).
+  const titleSavedRef = useRef(false);
+  // Track whether we've already fired the AI title generation call.
+  const aiTitleFiredRef = useRef(false);
+
   const { data: session } = useSession();
   const { showError } = useToast();
 
-  // ── Guest: clear IndexedDB on fresh browser open (not reload) ───────────
-  useEffect(() => {
-    if (session) return;
-
-    const handleBeforeUnload = () => {
-      sessionStorage.setItem("isReloading", "true");
-    };
-
-    const handleLoad = () => {
-      if (sessionStorage.getItem("isReloading")) {
-        sessionStorage.removeItem("isReloading");
-      } else {
-        clearConversations();
-      }
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    window.addEventListener("load", handleLoad);
-
-    if (!sessionStorage.getItem("isReloading")) {
-      clearConversations();
-    }
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      window.removeEventListener("load", handleLoad);
-    };
-  }, [session]);
-
-  // ── Helper: greeting message per category ───────────────────────────────
+  // ── Greeting message per category ────────────────────────────────────────
   const getGreetingMessage = (cat: string): Message => {
     const greetings: Record<string, string> = {
       all: "Hey! I'm **Gbebody AI**, your personal fitness assistant \n\n What's your goal today?",
@@ -95,50 +69,37 @@ export function ChatWindow({
     };
   };
 
-  // ── Load messages on mount ───────────────────────────────────────────────
-  // - isNewChat=true  → always show greeting, never fetch history
-  // - isNewChat=false → load history from server (auth) or IndexedDB (guest)
+  // ── Load messages for this session ───────────────────────────────────────
   useEffect(() => {
+    titleSavedRef.current = false;   // reset on new session
+    aiTitleFiredRef.current = false; // reset AI title call gate
     const loadMessages = async () => {
       setIsLoading(true);
       try {
-        if (isNewChat) {
-          // Fresh start — just show greeting regardless of auth state
-          setMessages([getGreetingMessage(category)]);
-          return;
-        }
-
         if (session) {
-          const res = await fetch(`/api/chat?category=${category}`);
+          const res = await fetch(`/api/chat?sessionId=${sessionId}`);
           const data = await res.json();
           if (data.messages && data.messages.length > 0) {
             setMessages(normalizeMessages(data.messages));
+            titleSavedRef.current = true; // existing session already has a title
           } else {
             setMessages([getGreetingMessage(category)]);
           }
         } else {
-          const saved = await loadGuestSession(category);
-          if (saved && saved.length > 0) {
-            setMessages(normalizeMessages(saved));
-          } else {
-            setMessages([getGreetingMessage(category)]);
-          }
+          // Guests have no persistence — always start fresh
+          setMessages([getGreetingMessage(category)]);
         }
-      } catch (err) {
+      } catch {
         showError("Failed to load chat. Please try again.");
         setMessages([getGreetingMessage(category)]);
       } finally {
         setIsLoading(false);
       }
     };
-
     loadMessages();
-  // isNewChat and category come from the key-remounted instance, so this
-  // only runs once on mount — which is exactly what we want
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sessionId, session?.user?.id]);
 
-  // ── Save messages whenever they change ──────────────────────────────────
+  // ── Persist messages on every change ─────────────────────────────────────
   const isFirstRender = useRef(true);
   useEffect(() => {
     if (isFirstRender.current) {
@@ -147,30 +108,37 @@ export function ChatWindow({
     }
     if (isLoading) return;
 
-    // Don't persist a fresh chat that only has the greeting
-    const hasRealMessages = messages.some((m) => m.role === "user");
-    if (!hasRealMessages) return;
-
     const saveMessages = async () => {
+      if (!session) return; // guests have no persistence
       try {
-        if (session) {
+          // Derive title from first user message (only needed once)
+          const firstUserMessage = messages.find((m) => m.role === "user");
+          const title = firstUserMessage?.content.slice(0, 60) ?? "New Chat";
+
           await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages, category }),
+            body: JSON.stringify({ sessionId, messages, category, title }),
           });
-        } else {
-          await saveGuestSession(category, messages);
-        }
-      } catch (err) {
+
+          // Notify parent so the history list stays current
+          if (!titleSavedRef.current && firstUserMessage) {
+            titleSavedRef.current = true;
+            onSessionSaved({
+              sessionId,
+              title,
+              category,
+              updatedAt: new Date().toISOString(),
+              createdAt: new Date().toISOString(),
+            });
+          }
+      } catch {
         showError("Failed to save chat. Your latest messages might not be saved.");
       }
     };
-
     saveMessages();
-  }, [messages, session, category, isLoading]);
+  }, [messages, session, category, isLoading, sessionId]);
 
-  // ── Stop streaming ───────────────────────────────────────────────────────
   const stopStream = useCallback(() => {
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
@@ -178,12 +146,10 @@ export function ChatWindow({
     setHasStartedReceiving(false);
   }, []);
 
-  // ── Send message ─────────────────────────────────────────────────────────
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || isTyping) return;
-      if (trimmed.length > MAX_CHARS) return;
+      if (!trimmed || isTyping || trimmed.length > MAX_CHARS) return;
 
       if (!session) setShowSignInBanner(true);
 
@@ -205,9 +171,7 @@ export function ChatWindow({
         { id: assistantMsgId, role: "assistant", content: "", timestamp: new Date() },
       ]);
 
-      setTimeout(() => {
-        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-      }, 100);
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
 
       const controller = new AbortController();
       abortControllerRef.current = controller;
@@ -223,16 +187,11 @@ export function ChatWindow({
             history: messages
               .slice(1)
               .slice(-10)
-              .map((m) => ({
-                role: m.role,
-                content: m.content.slice(0, 2000),
-              })),
+              .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) })),
           }),
         });
 
-        if (!response.ok || !response.body) {
-          throw new Error(`API error: ${response.status}`);
-        }
+        if (!response.ok || !response.body) throw new Error(`API error: ${response.status}`);
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -264,8 +223,32 @@ export function ChatWindow({
         setIsTyping(false);
         setHasStartedReceiving(false);
       }
+
+      if (session && !aiTitleFiredRef.current) {
+        aiTitleFiredRef.current = true;
+        fetch("/api/chat/title", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, firstUserMessage: trimmed }),
+        })
+          .then((res) => res.json())
+          .then(({ title }) => {
+            if (title) {
+              onSessionSaved({
+                sessionId,
+                title,
+                category,
+                updatedAt: new Date().toISOString(),
+                createdAt: new Date().toISOString(),
+              });
+            }
+          })
+          .catch(() => {
+            // Title generation failure is non-critical, so we fail silently.
+          });
+      }
     },
-    [isTyping, session, category, messages, hasStartedReceiving]
+    [isTyping, session, category, messages, sessionId, onSessionSaved]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -285,7 +268,6 @@ export function ChatWindow({
   const atLimit = charsLeft === 0;
   const hasOnlyGreeting = messages.length === 1 && !isTyping;
   const canSend = input.trim().length > 0 && !isTyping && !atLimit;
-
   const showStopButton = isTyping && hasStartedReceiving;
   const showDisabledSendButton = isTyping && !hasStartedReceiving;
 
@@ -298,7 +280,7 @@ export function ChatWindow({
   }
 
   return (
-    <div className="relative flex flex-col h-[90%] md:h-dvh w-full bg-black overflow-hidden">
+    <div className="relative flex flex-col h-dvh w-full bg-black overflow-hidden">
       {/* Sign-in banner */}
       {!session && showSignInBanner && (
         <div className="absolute md:top-0 left-0 right-0 p-4 bg-gray-300 text-center text-naija-dark font-bold flex items-center justify-center z-10 bg-card/90 backdrop-blur-sm border-b border-border">
@@ -335,9 +317,7 @@ export function ChatWindow({
         </div>
 
         {/* Quick prompts */}
-        {hasOnlyGreeting && (
-          <QuickPrompts category={category} onSelect={sendMessage} />
-        )}
+        {hasOnlyGreeting && <QuickPrompts category={category} onSelect={sendMessage} />}
 
         {/* Input area */}
         <div className="border-t border-border bg-card/50 backdrop-blur-sm px-3 sm:px-4 py-3">

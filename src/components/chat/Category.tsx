@@ -1,53 +1,65 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { FaBars } from "react-icons/fa";
 import { FitnessSidebar } from "./Sidebar";
 import { ChatWindow } from "./ChatWindow";
 import { HistoryModal } from "./HistoryModal";
-import { type ChatMessage } from "@/types/chat";
 import { clearConversations } from "@/lib/indexedDB";
 
 export type CategoryType = "all" | "food" | "workouts" | "form";
+
+export interface ChatSession {
+  sessionId: string;
+  title: string;
+  category: CategoryType;
+  updatedAt: string;
+  createdAt: string;
+}
 
 const Category = () => {
   const [activeCategory, setActiveCategory] = useState<CategoryType>("all");
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
-  const [history, setHistory] = useState<Record<string, ChatMessage[]>>({});
-  const [conversationId, setConversationId] = useState(Date.now());
-  const [isNewChat, setIsNewChat] = useState(true);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  // Each new chat gets a fresh sessionId; loading a history item reuses its id
+  const [activeSessionId, setActiveSessionId] = useState<string>(
+    () => crypto.randomUUID()
+  );
   const { data: session } = useSession();
 
+  // ── Restore last-used category from sessionStorage ───────────────────────
   useEffect(() => {
     const savedCategory = sessionStorage.getItem("activeCategory") as CategoryType;
-    if (savedCategory) {
-      setActiveCategory(savedCategory);
-    }
+    if (savedCategory) setActiveCategory(savedCategory);
+  }, []);
 
-    if (session) {
-      fetch("/api/chat")
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.history) {
-            setHistory(data.history);
-          }
-        })
-        .catch(console.error);
+  // ── Fetch session list when the user is authenticated ────────────────────
+  const fetchSessions = useCallback(async () => {
+    if (!session) return;
+    try {
+      const res = await fetch("/api/chat");
+      const data = await res.json();
+      if (data.sessions) setSessions(data.sessions);
+    } catch (err) {
+      console.error("Failed to fetch sessions:", err);
     }
   }, [session]);
 
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
+  // ── Category change ───────────────────────────────────────────────────────
   const handleCategoryChange = (cat: CategoryType) => {
     setActiveCategory(cat);
     sessionStorage.setItem("activeCategory", cat);
     setMobileSidebarOpen(false);
-    // Switching category = fresh UI, don't load old history
-    setIsNewChat(true);
-    setConversationId(Date.now());
   };
 
+  // ── New chat: generate a fresh session id ────────────────────────────────
   const handleNewChat = async () => {
     if (!session) {
       try {
@@ -56,44 +68,53 @@ const Category = () => {
         console.error("Failed to clear guest session:", err);
       }
     }
-    // Signal ChatWindow to show greeting, not load history
-    setIsNewChat(true);
-    setConversationId(Date.now());
+    setActiveSessionId(crypto.randomUUID());
     setMobileSidebarOpen(false);
   };
 
+  // ── Open history modal (refresh list first) ──────────────────────────────
   const handleHistory = () => {
+    fetchSessions();
     setIsHistoryOpen(true);
     setMobileSidebarOpen(false);
   };
 
-  const handleSelectHistory = (selectedMessages: ChatMessage[], categoryKey: string) => {
-    setActiveCategory(categoryKey as CategoryType);
-    sessionStorage.setItem("activeCategory", categoryKey);
-    // Signal ChatWindow to load history from server
-    setIsNewChat(false);
-    setConversationId(Date.now());
+  // ── Load a session from history ──────────────────────────────────────────
+  const handleSelectHistory = (selectedSession: ChatSession) => {
+    setActiveCategory(selectedSession.category);
+    sessionStorage.setItem("activeCategory", selectedSession.category);
+    setActiveSessionId(selectedSession.sessionId);
     setIsHistoryOpen(false);
   };
 
-  const handleDeleteHistory = async (categoryToDelete: string) => {
+  // ── Delete a session ─────────────────────────────────────────────────────
+  const handleDeleteSession = async (sessionId: string) => {
     if (!session) return;
-
     try {
-      const response = await fetch(`/api/chat?category=${categoryToDelete}`, {
+      const res = await fetch(`/api/chat?sessionId=${sessionId}`, {
         method: "DELETE",
       });
-
-      if (response.ok) {
-        const newHistory = { ...history };
-        delete newHistory[categoryToDelete];
-        setHistory(newHistory);
+      if (res.ok) {
+        setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
       } else {
-        console.error("Failed to delete history");
+        console.error("Failed to delete session");
       }
-    } catch (error) {
-      console.error("Error deleting history:", error);
+    } catch (err) {
+      console.error("Error deleting session:", err);
     }
+  };
+
+  // ── Called by ChatWindow when a new session title is derived ─────────────
+  const handleSessionSaved = (savedSession: ChatSession) => {
+    setSessions((prev) => {
+      const exists = prev.find((s) => s.sessionId === savedSession.sessionId);
+      if (exists) {
+        return prev.map((s) =>
+          s.sessionId === savedSession.sessionId ? { ...s, ...savedSession } : s
+        );
+      }
+      return [savedSession, ...prev];
+    });
   };
 
   return (
@@ -139,19 +160,20 @@ const Category = () => {
         </div>
 
         <ChatWindow
-          key={conversationId}
+          key={activeSessionId}
+          sessionId={activeSessionId}
           category={activeCategory}
-          isNewChat={isNewChat}
           onNewChat={handleNewChat}
+          onSessionSaved={handleSessionSaved}
         />
       </main>
 
       <HistoryModal
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
-        history={history}
-        onSelectHistory={handleSelectHistory}
-        onDeleteHistory={handleDeleteHistory}
+        sessions={sessions}
+        onSelectSession={handleSelectHistory}
+        onDeleteSession={handleDeleteSession}
       />
     </div>
   );
