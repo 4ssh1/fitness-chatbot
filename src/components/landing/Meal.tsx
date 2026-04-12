@@ -5,7 +5,6 @@ import { motion, useInView } from 'framer-motion'
 
 const meals = [
   {
-    icon: '🥩',
     name: 'Lean Suya Wrap',
     calories: '420',
     protein: '35g',
@@ -16,7 +15,6 @@ const meals = [
     accentColor: 'bg-naija-magenta',
   },
   {
-    icon: '🍚',
     name: 'Ofada Rice Power Bowl',
     calories: '550',
     protein: '40g',
@@ -27,7 +25,6 @@ const meals = [
     accentColor: 'bg-naija-yellow',
   },
   {
-    icon: '🥞',
     name: 'Plantain Protein Pancakes',
     calories: '380',
     protein: '30g',
@@ -126,9 +123,6 @@ export function MealShowcase() {
                 className={`h-4 ${meal.accentColor} w-full border-b-4 border-naija-dark`}
               ></div>
               <div className="p-8 flex-1 flex flex-col">
-                <div className="text-6xl mb-6 bg-naija-light w-20 h-20 rounded-2xl flex items-center justify-center border-2 border-naija-dark transform -rotate-3">
-                  {meal.icon}
-                </div>
                 <h3 className="text-2xl font-heading text-naija-dark mb-4">
                   {meal.name}
                 </h3>

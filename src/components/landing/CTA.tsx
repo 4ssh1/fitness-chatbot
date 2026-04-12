@@ -58,7 +58,7 @@ export function FinalCTA() {
             duration: 0.6,
             delay: 0.2,
           }}
-          className="text-lg md:text-2xl text-white/90 font-medium mb-6 leading-relaxed"
+          className="sr-only md:block text-lg md:text-2xl text-white/90 font-medium mb-6 leading-relaxed"
         >
           No more copying oyinbo diet plans wey no work for us. <br /> GbeBody AI
           understands Nigerian food, Nigerian bodies, Nigerian goals.
@@ -108,7 +108,7 @@ export function FinalCTA() {
           }}
           className="flex flex-col items-center"
         >
-          <button className="bg-naija-yellow hover:bg-white text-naija-dark font-heading text-2xl py-6 px-12 rounded-full transition-all duration-300 transform hover:scale-105 border-4 border-naija-dark box-shadow-bold hover:box-shadow-bold-hover mb-8 w-full sm:w-auto" onClick={()=> router.push('/get-started')}>
+          <button className="bg-naija-yellow hover:bg-white text-naija-dark font-heading sm:text-2xl py-6 px-6 md:px-12 rounded-full transition-all duration-300 transform hover:scale-105 border-4 border-naija-dark box-shadow-bold hover:box-shadow-bold-hover mb-8 w-full sm:w-auto" onClick={()=> router.push('/get-started')}>
             Join GbeBody AI - It's Free!
           </button>
 

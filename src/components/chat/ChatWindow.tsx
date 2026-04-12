@@ -298,7 +298,7 @@ export function ChatWindow({
   }
 
   return (
-    <div className="relative flex flex-col h-dvh w-full bg-black overflow-hidden">
+    <div className="relative flex flex-col h-[90%] md:h-dvh w-full bg-black overflow-hidden">
       {/* Sign-in banner */}
       {!session && showSignInBanner && (
         <div className="absolute md:top-0 left-0 right-0 p-4 bg-gray-300 text-center text-naija-dark font-bold flex items-center justify-center z-10 bg-card/90 backdrop-blur-sm border-b border-border">
