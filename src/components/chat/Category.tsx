@@ -154,9 +154,6 @@ const Category = () => {
           >
             <FaBars className="h-5 w-5" />
           </button>
-          <h1 className="ml-2 font-display text-lg font-bold text-gradient">
-            Gbebody AI
-          </h1>
         </div>
 
         <ChatWindow

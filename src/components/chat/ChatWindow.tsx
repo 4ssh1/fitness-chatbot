@@ -43,16 +43,12 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  // Track whether we've already saved a title for this session to avoid
-  // overwriting it on subsequent saves (title is set on first user message).
   const titleSavedRef = useRef(false);
-  // Track whether we've already fired the AI title generation call.
   const aiTitleFiredRef = useRef(false);
 
   const { data: session } = useSession();
   const { showError } = useToast();
 
-  // ── Greeting message per category ────────────────────────────────────────
   const getGreetingMessage = (cat: string): Message => {
     const greetings: Record<string, string> = {
       all: "Hey! I'm **Gbebody AI**, your personal fitness assistant \n\n What's your goal today?",
@@ -69,10 +65,9 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
     };
   };
 
-  // ── Load messages for this session ───────────────────────────────────────
   useEffect(() => {
-    titleSavedRef.current = false;   // reset on new session
-    aiTitleFiredRef.current = false; // reset AI title call gate
+    titleSavedRef.current = false;
+    aiTitleFiredRef.current = false;
     const loadMessages = async () => {
       setIsLoading(true);
       try {
@@ -81,12 +76,11 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           const data = await res.json();
           if (data.messages && data.messages.length > 0) {
             setMessages(normalizeMessages(data.messages));
-            titleSavedRef.current = true; // existing session already has a title
+            titleSavedRef.current = true;
           } else {
             setMessages([getGreetingMessage(category)]);
           }
         } else {
-          // Guests have no persistence — always start fresh
           setMessages([getGreetingMessage(category)]);
         }
       } catch {
@@ -99,7 +93,6 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
     loadMessages();
   }, [sessionId, session?.user?.id]);
 
-  // ── Persist messages on every change ─────────────────────────────────────
   const isFirstRender = useRef(true);
   useEffect(() => {
     if (isFirstRender.current) {
@@ -109,29 +102,27 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
     if (isLoading) return;
 
     const saveMessages = async () => {
-      if (!session) return; // guests have no persistence
+      if (!session) return;
       try {
-          // Derive title from first user message (only needed once)
-          const firstUserMessage = messages.find((m) => m.role === "user");
-          const title = firstUserMessage?.content.slice(0, 60) ?? "New Chat";
+        const firstUserMessage = messages.find((m) => m.role === "user");
+        const title = firstUserMessage?.content.slice(0, 60) ?? "New Chat";
 
-          await fetch("/api/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sessionId, messages, category, title }),
+        await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, messages, category, title }),
+        });
+
+        if (!titleSavedRef.current && firstUserMessage) {
+          titleSavedRef.current = true;
+          onSessionSaved({
+            sessionId,
+            title,
+            category,
+            updatedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
           });
-
-          // Notify parent so the history list stays current
-          if (!titleSavedRef.current && firstUserMessage) {
-            titleSavedRef.current = true;
-            onSessionSaved({
-              sessionId,
-              title,
-              category,
-              updatedAt: new Date().toISOString(),
-              createdAt: new Date().toISOString(),
-            });
-          }
+        }
       } catch {
         showError("Failed to save chat. Your latest messages might not be saved.");
       }
@@ -260,8 +251,24 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const val = e.target.value;
-    if (val.length <= MAX_CHARS) setInput(val);
+    if (val.length <= MAX_CHARS) {
+      setInput(val);
+      
+      if (textareaRef.current) {
+        // Reset height to auto to allow shrinking on delete
+        textareaRef.current.style.height = "auto";
+        // Set height to the newly calculated scrollHeight
+        textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+      }
+    }
   };
+
+  // Reset textarea height back to default when input is cleared
+  useEffect(() => {
+    if (input === "" && textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+  }, [input]);
 
   const charsLeft = MAX_CHARS - input.length;
   const nearLimit = charsLeft <= 100;
@@ -273,28 +280,29 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-black">
-        <div className="text-muted-foreground">Loading chat...</div>
+      <div className="flex-1 flex flex-col items-center justify-center bg-black min-h-dvh">
+        <div className="size-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+        <div className="text-muted-foreground animate-pulse text-sm">Initializing training protocol...</div>
       </div>
     );
   }
 
   return (
-    <div className="relative flex flex-col h-dvh w-full bg-black overflow-hidden">
-      {/* Sign-in banner */}
+    <div className="relative flex flex-col h-dvh w-full bg-black bg-[radial-gradient(ellipse_at_top,var(--tw-gradient-stops))] from-zinc-900/20 via-black to-black overflow-hidden">
+      
       {!session && showSignInBanner && (
-        <div className="absolute md:top-0 left-0 right-0 p-4 bg-gray-300 text-center text-naija-dark font-bold flex items-center justify-center z-10 bg-card/90 backdrop-blur-sm border-b border-border">
-          <div className="flex items-center">
-            <p className="text-sm text-foreground">Sign in to save your chat history.</p>
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-md p-1 pl-4 rounded-full shadow-2xl shadow-black/50 bg-zinc-900/80 border border-white/10 backdrop-blur-md flex items-center justify-between z-20 animate-in slide-in-from-top-4 fade-in duration-300">
+          <p className="text-sm text-foreground/90 font-medium">Sign in to save progress</p>
+          <div className="flex items-center gap-1">
             <button
               onClick={() => signIn()}
-              className="ml-4 bg-primary text-primary-foreground text-sm px-4 py-1.5 rounded-full font-semibold hover:brightness-110 transition"
+              className="bg-primary text-primary-foreground text-sm px-5 py-2 rounded-full font-semibold hover:scale-105 active:scale-95 transition-all shadow-lg shadow-primary/20"
             >
               Sign In
             </button>
             <button
               onClick={() => setShowSignInBanner(false)}
-              className="ml-2 text-muted-foreground hover:text-foreground transition"
+              className="p-2 text-muted-foreground hover:text-foreground hover:bg-white/5 rounded-full transition-colors"
               aria-label="Dismiss"
             >
               <IoClose className="size-5" />
@@ -303,9 +311,9 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
         </div>
       )}
 
-      <div className="flex-1 flex flex-col bg-black relative min-h-0">
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin px-4 py-6 space-y-2">
+      <div className="flex-1 flex flex-col relative min-h-0">
+        {/* Messages Container */}
+        <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent px-4 py-8 space-y-4">
           {messages.map((msg) => {
             if (msg.role === "assistant" && msg.content === "" && isTyping) return null;
             return <ChatMessage key={msg.id} message={msg} />;
@@ -313,17 +321,21 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           {isTyping && messages[messages.length - 1]?.content === "" && (
             <TypingIndicator category={category} />
           )}
-          <div ref={bottomRef} />
+          <div className="h-32" ref={bottomRef} /> 
         </div>
 
-        {/* Quick prompts */}
-        {hasOnlyGreeting && <QuickPrompts category={category} onSelect={sendMessage} />}
+        {hasOnlyGreeting && (
+          <div className="absolute bottom-32 left-0 right-0 z-10 px-4">
+            <QuickPrompts category={category} onSelect={sendMessage} />
+          </div>
+        )}
 
-        {/* Input area */}
-        <div className="border-t border-border bg-card/50 backdrop-blur-sm px-3 sm:px-4 py-3">
+        <div className="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black via-black/95 to-transparent pt-12 pb-4 px-3 sm:px-4 z-20">
           <div className="flex items-end gap-2 max-w-3xl mx-auto">
-            <div className="flex flex-1 flex-col rounded-xl border border-border bg-muted focus-within:border-primary transition-colors">
-              <div className="flex items-end gap-1">
+            
+            {/* Elegant Textarea Pill */}
+            <div className="flex flex-1 flex-col rounded-3xl border border-white/5 bg-zinc-900/60 backdrop-blur-xl shadow-lg focus-within:ring-1 focus-within:ring-primary/50 focus-within:border-primary/50 transition-all">
+              <div className="flex items-end gap-2 p-1">
                 <textarea
                   ref={textareaRef}
                   value={input}
@@ -332,52 +344,56 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
                   placeholder="Ask about workouts, nutrition, technique…"
                   rows={1}
                   disabled={isTyping}
-                  className="flex-1 resize-none bg-transparent px-3 py-3 text-[11px] sm:text-sm text-foreground outline-none sm:max-h-40 placeholder:text-muted-foreground disabled:opacity-50"
+                  className="flex-1 resize-none bg-transparent px-2 sm:px-4 py-3 sm:py-3.5 text-[11px] sm:text-sm text-foreground outline-none min-h-11 sm:min-h-12 max-h-32 sm:max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent placeholder:text-muted-foreground/70 disabled:opacity-50 leading-relaxed"
                 />
-                <MicButton
-                  onTranscript={(text) => setInput((prev) => prev + (prev ? " " : "") + text)}
-                  disabled={isTyping}
-                />
+                <div className="pb-1.5 pr-1.5 shrink-0">
+                  <MicButton
+                    onTranscript={(text) => setInput((prev) => prev + (prev ? " " : "") + text)}
+                    disabled={isTyping}
+                  />
+                </div>
               </div>
               {nearLimit && (
-                <p
-                  className={`text-right text-[10px] px-3 pb-1.5 transition-colors ${
-                    atLimit ? "text-destructive font-semibold" : "text-muted-foreground"
-                  }`}
-                >
-                  {atLimit ? "Character limit reached" : `${charsLeft} left`}
-                </p>
+                <div className="px-4 pb-2 flex justify-end">
+                  <span
+                    className={`text-[10px] tracking-wide transition-colors ${
+                      atLimit ? "text-destructive font-bold" : "text-muted-foreground/60"
+                    }`}
+                  >
+                    {atLimit ? "CHARACTER LIMIT REACHED" : `${charsLeft} LEFT`}
+                  </span>
+                </div>
               )}
             </div>
 
             {showStopButton ? (
               <button
                 onClick={stopStream}
-                className="shrink-0 flex items-center justify-center size-10 sm:size-11 mb-0.5 rounded-xl bg-destructive text-destructive-foreground border border-destructive/30 transition-colors hover:brightness-110"
+                className="shrink-0 flex items-center justify-center size-[52px] mb-0.5 rounded-full bg-zinc-800 text-foreground border border-white/10 transition-all hover:bg-destructive hover:text-white hover:border-destructive hover:scale-105 active:scale-95 shadow-lg"
                 aria-label="Stop response"
               >
-                <IoStop className="size-4" />
+                <IoStop className="size-5" />
               </button>
             ) : showDisabledSendButton ? (
               <button
                 disabled
-                className="shrink-0 flex items-center justify-center size-10 sm:size-11 mb-0.5 rounded-xl bg-primary/50 text-primary-foreground border border-primary/30 cursor-not-allowed opacity-50"
+                className="shrink-0 flex items-center justify-center size-[52px] mb-0.5 rounded-full bg-primary/30 text-primary-foreground/50 border border-primary/20 cursor-not-allowed transition-all"
                 aria-label="Waiting for response"
               >
-                <IoSend className="size-4" />
+                <IoSend className="size-5 -translate-x-px translate-y-px" />
               </button>
             ) : (
               <button
                 onClick={() => sendMessage(input)}
                 disabled={!canSend}
-                className="shrink-0 flex items-center justify-center size-10 sm:size-11 mb-0.5 rounded-xl bg-primary text-primary-foreground border border-primary/30 transition-colors hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="shrink-0 flex items-center justify-center size-[52px] mb-0.5 rounded-full bg-primary text-primary-foreground border border-primary transition-all shadow-lg shadow-primary/20 hover:scale-105 hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:hover:scale-100 disabled:cursor-not-allowed"
                 aria-label="Send message"
               >
-                <IoSend className="size-4" />
+                <IoSend className="size-5 -translate-x-px translate-y-px" />
               </button>
             )}
           </div>
-          <p className="text-center text-muted-foreground text-[9px] sm:text-xs mt-2">
+          <p className="text-center text-muted-foreground/50 text-[10px] mt-3 tracking-wide">
             Gbebody AI can make mistakes. Consult a professional for medical or dietary advice.
           </p>
         </div>
