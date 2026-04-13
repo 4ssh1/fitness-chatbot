@@ -6,7 +6,7 @@ import { FaBars } from "react-icons/fa";
 import { FitnessSidebar } from "./Sidebar";
 import { ChatWindow } from "./ChatWindow";
 import { HistoryModal } from "./HistoryModal";
-import { clearConversations } from "@/lib/indexedDB";
+import { deleteGuestSession } from "@/lib/indexedDB";
 
 export type CategoryType = "all" | "food" | "workouts" | "form";
 
@@ -26,7 +26,6 @@ const Category = () => {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  // Each new chat gets a fresh sessionId; loading a history item reuses its id
   const [activeSessionId, setActiveSessionId] = useState<string>(
     () => crypto.randomUUID()
   );
@@ -72,7 +71,7 @@ const Category = () => {
   const handleNewChat = async () => {
     if (!session) {
       try {
-        await clearConversations(activeSessionId);
+        await deleteGuestSession(activeCategory);
       } catch (err) {
         console.error("Failed to clear guest session:", err);
       }

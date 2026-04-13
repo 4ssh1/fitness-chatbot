@@ -65,7 +65,6 @@ const fallbackLlm = new ChatGoogleGenerativeAI({
   maxRetries: 0,
 });
 
-
 declare global {
   var _cachedVectorStore: MongoDBAtlasVectorSearch | undefined;
   var _cachedChains: Record<string, RunnableSequence> | undefined;
@@ -140,7 +139,6 @@ async function getChain(category: CategoryType, llmMode: LlmMode): Promise<Runna
   if (global._cachedChains[cacheKey]) return global._cachedChains[cacheKey]!;
 
   const retriever = getRetriever(category);
-  
   const model = llmMode === "fallback" ? fallbackLlm : primaryLlm;
 
   global._cachedChains[cacheKey] = RunnableSequence.from([
@@ -241,13 +239,6 @@ function getFriendlyFallbackMessage(error: any): string {
   return "I ran into a temporary AI service issue while generating this reply. Please try again shortly.";
 }
 
-function toStreamError(error: unknown): Error {
-  if (error instanceof Error) return error;
-  if (typeof error === "string") return new Error(error);
-  return new Error(
-    "I ran into a temporary AI service issue while generating this reply. Please try again shortly."
-  );
-}
 
 function isQuotaError(error: unknown): boolean {
   const err = error as any;
@@ -260,20 +251,23 @@ function isQuotaError(error: unknown): boolean {
 
 function isTransientError(error: unknown): boolean {
   const err = error as any;
-  const status = err?.status;
   const msg = String(err?.message || "").toLowerCase();
   const name = String(err?.name || "").toLowerCase();
 
-  if (status && status >= 400 && status < 500 && status !== 429) return false;
+  if (isQuotaError(error)) return false;
+
+  const statusInMessage = msg.match(/\[(\d{3})\s/)?.[1];
+  const status = err?.status ?? (statusInMessage ? parseInt(statusInMessage) : undefined);
+  if (status && status >= 400 && status < 500) return false;
 
   return (
-    (status && status >= 500) ||
+    (status !== undefined && status >= 500) ||
     name.includes("timeout") ||
-    msg.includes("fetch") ||
+    msg.includes("fetch failed") ||
     msg.includes("socket") ||
     msg.includes("network") ||
-    msg.includes("stream") ||
-    msg.includes("premature")
+    msg.includes("econnreset") ||
+    msg.includes("premature close")
   );
 }
 
@@ -287,13 +281,10 @@ async function streamWithRetry(
   const { persona } = CATEGORY_CONFIG[category];
   const encoder = new TextEncoder();
 
-  console.log(`\n--- STARTING REQUEST (Attempt ${attempt}) ---`);
-  
+  console.log(`\n--- STARTING REQUEST (Attempt ${attempt}, Mode: ${llmMode}) ---`);
+
   console.time("1. Setup & Get Chains");
-  const [chain, vectorStore] = await Promise.all([
-    getChain(category, llmMode),
-    getVectorStore(),
-  ]);
+  const chain = await getChain(category, llmMode);
   console.timeEnd("1. Setup & Get Chains");
 
   return new ReadableStream({
@@ -301,9 +292,9 @@ async function streamWithRetry(
       try {
         console.time("2. Time to First Token (Retrieval + LLM)");
         console.log("-> Sending request to LangChain...");
-        
+
         const langchainStream = await chain.stream({ question, chatHistory, persona });
-        
+
         let firstToken = false;
         for await (const chunk of langchainStream) {
           if (!firstToken) {
@@ -319,18 +310,17 @@ async function streamWithRetry(
         }
         controller.close();
         console.log("--- REQUEST COMPLETE ---\n");
-        
+
       } catch (error: any) {
         console.timeEnd("2. Time to First Token (Retrieval + LLM)");
         console.error("!!! ERROR CAUGHT IN STREAM !!!");
         console.error("Error Message:", error.message);
-        console.error("Status Code:", error?.status || error?.response?.status);
-        
+
         const isQuota = isQuotaError(error);
         const isTransient = isTransientError(error);
 
         if (isQuota && llmMode === "primary") {
-          console.warn("-> Quota Exceeded. Switching to Fallback instantly...");
+          console.warn("-> Primary quota hit. Switching to fallback...");
           const fallbackStream = await streamWithRetry(question, chatHistory, category, "fallback", 0);
           const reader = fallbackStream.getReader();
           while (true) {
@@ -342,8 +332,14 @@ async function streamWithRetry(
           return;
         }
 
-        if (isTransient && attempt < MAX_RETRIES) {
-          console.warn(`-> Network blip (Attempt ${attempt + 1}/${MAX_RETRIES}). Retrying...`);
+        if (isQuota && llmMode === "fallback") {
+          console.warn("-> Fallback quota hit. Failing permanently.");
+          controller.error(new Error(getFriendlyFallbackMessage(error)));
+          return;
+        }
+
+        if (isTransient && llmMode === "primary" && attempt < MAX_RETRIES) {
+          console.warn(`-> Transient error (Attempt ${attempt + 1}/${MAX_RETRIES}). Retrying...`);
           const waitMs = RETRY_DELAY_MS * (attempt + 1);
           await new Promise((r) => setTimeout(r, waitMs));
 
@@ -359,7 +355,7 @@ async function streamWithRetry(
         }
 
         console.error("-> FAILED PERMANENTLY");
-        controller.error(toStreamError(getFriendlyFallbackMessage(error)));
+        controller.error(new Error(getFriendlyFallbackMessage(error)));
       }
     },
   });

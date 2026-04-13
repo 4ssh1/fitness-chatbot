@@ -1,149 +1,52 @@
 import { openDB } from "idb";
 
 const DB_NAME = "GbebodyChat";
-const STORE_NAME = "guestSessions";
-const AUTH_STORE = "authSessions"; 
-const DB_VERSION = 3; // bumped for new store
-
-type GuestCategory = "all" | "food" | "workouts" | "form";
-
-const TAB_KEY = "gbebody_tab_sessions";
-
-function registerTabSession(sessionId: string) {
-  try {
-    const existing = JSON.parse(sessionStorage.getItem(TAB_KEY) || "[]") as string[];
-    if (!existing.includes(sessionId)) {
-      sessionStorage.setItem(TAB_KEY, JSON.stringify([...existing, sessionId]));
-    }
-  } catch {}
-}
-
-function getTabSessions(): string[] {
-  try {
-    return JSON.parse(sessionStorage.getItem(TAB_KEY) || "[]") as string[];
-  } catch {
-    return [];
-  }
-}
+const STORE_NAME = "sessions";
+const DB_VERSION = 4;
 
 let dbPromise: ReturnType<typeof openDB> | null = null;
 
 function getDB() {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion) {
-        // v1 → v2: recreate guest store with sessionId key
-        if (oldVersion < 2 && db.objectStoreNames.contains(STORE_NAME)) {
-          db.deleteObjectStore(STORE_NAME);
+      upgrade(db) {
+        for (const name of Array.from(db.objectStoreNames)) {
+          db.deleteObjectStore(name);
         }
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME);
-        }
-        // v3: add auth session cache store
-        if (!db.objectStoreNames.contains(AUTH_STORE)) {
-          db.createObjectStore(AUTH_STORE);
-        }
+        db.createObjectStore(STORE_NAME);
       },
     });
   }
   return dbPromise;
 }
 
-async function purgeStaleEntries() {
+
+export async function saveGuestSession(category: string, messages: any[]) {
   try {
     const db = await getDB();
-    const tabSessions = getTabSessions();
-    const allKeys = await db.getAllKeys(STORE_NAME);
-    for (const key of allKeys) {
-      if (!tabSessions.includes(key as string)) {
-        await db.delete(STORE_NAME, key);
-      }
-    }
+    await db.put(STORE_NAME, messages, `guest:${category}`);
   } catch {}
 }
 
-let purgeRan = false;
-async function purgeOnce() {
-  if (purgeRan) return;
-  purgeRan = true;
-  await purgeStaleEntries();
-}
-
-function getGuestScopedKey(sessionId: string, category: GuestCategory): string {
-  return `${category}:${sessionId}`;
-}
-
-// ── Guest API ─────────────────────────────────────────────────────────────────
-
-export async function saveGuestSession(
-  sessionId: string,
-  category: GuestCategory,
-  messages: any[]
-) {
-  const scopedSessionKey = getGuestScopedKey(sessionId, category);
-  await purgeOnce();
-  registerTabSession(scopedSessionKey);
-  const db = await getDB();
-  await db.put(STORE_NAME, messages, scopedSessionKey);
-}
-
-export async function loadGuestSession(
-  sessionId: string,
-  category: GuestCategory
-): Promise<any[] | null> {
-  const scopedSessionKey = getGuestScopedKey(sessionId, category);
-  await purgeOnce();
-  const tabSessions = getTabSessions();
-  if (!tabSessions.includes(scopedSessionKey)) return null;
-  const db = await getDB();
-  return (await db.get(STORE_NAME, scopedSessionKey)) || null;
-}
-
-export async function clearGuestSession(sessionId: string, category: GuestCategory) {
-  const scopedSessionKey = getGuestScopedKey(sessionId, category);
-  const db = await getDB();
-  await db.delete(STORE_NAME, scopedSessionKey);
-}
-
-/** Cache messages for an authenticated user's session. */
-export async function saveAuthSession(sessionId: string, messages: any[]) {
+export async function loadGuestSession(category: string): Promise<any[] | null> {
   try {
     const db = await getDB();
-    await db.put(AUTH_STORE, { messages, cachedAt: Date.now() }, sessionId);
-  } catch {}
-}
-
-export async function loadAuthSession(sessionId: string): Promise<any[] | null> {
-  try {
-    const db = await getDB();
-    const entry = await db.get(AUTH_STORE, sessionId);
-    return entry?.messages ?? null;
+    return (await db.get(STORE_NAME, `guest:${category}`)) ?? null;
   } catch {
     return null;
   }
 }
 
-export async function clearAuthSession(sessionId: string) {
+export async function deleteGuestSession(category: string) {
   try {
     const db = await getDB();
-    await db.delete(AUTH_STORE, sessionId);
+    await db.delete(STORE_NAME, `guest:${category}`);
   } catch {}
 }
 
-
-export async function clearConversations(sessionId?: string, category?: GuestCategory) {
-  const db = await getDB();
-  if (sessionId) {
-    if (category) {
-      await db.delete(STORE_NAME, getGuestScopedKey(sessionId, category));
-    } else {
-      await db.delete(STORE_NAME, sessionId);
-    }
-    await db.delete(AUTH_STORE, sessionId).catch(() => {});
-  } else {
-    const tx = db.transaction([STORE_NAME, AUTH_STORE], "readwrite");
-    await tx.objectStore(STORE_NAME).clear();
-    await tx.objectStore(AUTH_STORE).clear();
-    await tx.done;
-  }
+export async function clearAllSessions() {
+  try {
+    const db = await getDB();
+    await db.clear(STORE_NAME);
+  } catch {}
 }

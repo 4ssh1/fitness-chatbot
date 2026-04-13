@@ -13,8 +13,6 @@ import { type ChatSession } from "./Category";
 import {
   saveGuestSession,
   loadGuestSession,
-  saveAuthSession,
-  loadAuthSession,
 } from "@/lib/indexedDB";
 
 const MAX_CHARS = 1000;
@@ -115,17 +113,9 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
 
     const loadMessages = async () => {
       setIsLoading(true);
-      let hydratedFromCache = false;
 
       try {
         if (session) {
-          const cached = await loadAuthSession(sessionId);
-          if (cached && cached.length > 0) {
-            setMessages(withoutGreeting(normalizeMessages(cached)));
-            hydratedFromCache = true;
-            setIsLoading(false);
-          }
-
           const res = await fetch(`/api/chat?sessionId=${sessionId}`);
           if (!res.ok) {
             throw new Error(`Failed to sync chat from server (${res.status}).`);
@@ -135,12 +125,11 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           if (data.messages && data.messages.length > 0) {
             const serverMsgs = withoutGreeting(normalizeMessages(data.messages));
             setMessages(serverMsgs);
-            await saveAuthSession(sessionId, serverMsgs);
-          } else if (!hydratedFromCache) {
+          } else {
             setMessages([]);
           }
         } else {
-          const cached = await loadGuestSession(sessionId, category);
+          const cached = await loadGuestSession(category);
           if (cached && cached.length > 0) {
             setMessages(withoutGreeting(normalizeMessages(cached)));
           } else {
@@ -148,17 +137,15 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           }
         }
       } catch {
-        if (!hydratedFromCache) {
-          showError("Failed to load chat. Please try again.");
-          setMessages([]);
-        }
+        showError("Failed to load chat. Please try again.");
+        setMessages([]);
       } finally {
         setIsLoading(false);
       }
     };
 
     loadMessages();
-  }, [sessionId, session?.user?.id ?? "", category]);
+  }, [sessionId, category, session?.user?.id ?? ""]);
 
   const stopStream = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -173,7 +160,6 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
       if (toSave.length === 0) return;
 
       if (session) {
-        await saveAuthSession(sessionId, toSave);
         try {
           const firstUser = toSave.find((m) => m.role === "user");
           const title = firstUser?.content.slice(0, 60) ?? "New Chat";
@@ -193,7 +179,7 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           showError("Failed to save chat. Your latest messages might not be saved.");
         }
       } else {
-        await saveGuestSession(sessionId, category, toSave);
+        await saveGuestSession(category, toSave);
       }
     },
     [session, sessionId, category, onSessionSaved, showError]
