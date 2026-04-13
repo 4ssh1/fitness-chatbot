@@ -9,6 +9,7 @@ import { useSession, signIn } from "next-auth/react";
 import { MicButton } from "@/components/chat/Mic";
 import { useToast } from "@/hooks/useToast";
 import { type ChatSession } from "./Category";
+import { saveGuestSession, loadGuestSession } from "@/lib/indexedDB";
 
 const MAX_CHARS = 1000;
 
@@ -32,6 +33,23 @@ interface ChatWindowProps {
   onSessionSaved: (session: ChatSession) => void;
 }
 
+const GREETINGS: Record<string, string> = {
+  all: "Hey! I'm **Gbebody AI**, your personal fitness assistant \n\n What's your goal today?",
+  food: "**Nutrition Mode** activated!\n\nI can help with meal plans, macros, calorie targets, pre/post workout nutrition, and healthy recipes. What are you working towards?",
+  workouts:
+    "**Workout Mode** activated!\n\nI'll help you build programs, plan splits, track progressive overload, and choose the right exercises. What are we training today?",
+  form: "**Form & Technique Mode** activated!\n\nI'll guide you through proper movement patterns, cues to watch for, and how to avoid injury. Which exercise or movement do you want to nail?",
+};
+
+function makeGreeting(cat: string): Message {
+  return {
+    id: "greeting",
+    role: "assistant",
+    content: GREETINGS[cat] ?? GREETINGS.all,
+    timestamp: new Date(),
+  };
+}
+
 export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -43,31 +61,14 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const titleSavedRef = useRef(false);
   const aiTitleFiredRef = useRef(false);
 
   const { data: session } = useSession();
   const { showError } = useToast();
 
-  const getGreetingMessage = (cat: string): Message => {
-    const greetings: Record<string, string> = {
-      all: "Hey! I'm **Gbebody AI**, your personal fitness assistant \n\n What's your goal today?",
-      food: "**Nutrition Mode** activated!\n\nI can help with meal plans, macros, calorie targets, pre/post workout nutrition, and healthy recipes. What are you working towards?",
-      workouts:
-        "**Workout Mode** activated!\n\nI'll help you build programs, plan splits, track progressive overload, and choose the right exercises. What are we training today?",
-      form: "**Form & Technique Mode** activated!\n\nI'll guide you through proper movement patterns, cues to watch for, and how to avoid injury. Which exercise or movement do you want to nail?",
-    };
-    return {
-      id: "greeting",
-      role: "assistant",
-      content: greetings[cat] ?? greetings.all,
-      timestamp: new Date(),
-    };
-  };
-
   useEffect(() => {
-    titleSavedRef.current = false;
     aiTitleFiredRef.current = false;
+
     const loadMessages = async () => {
       setIsLoading(true);
       try {
@@ -75,60 +76,35 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           const res = await fetch(`/api/chat?sessionId=${sessionId}`);
           const data = await res.json();
           if (data.messages && data.messages.length > 0) {
-            setMessages(normalizeMessages(data.messages));
-            titleSavedRef.current = true;
+            const loaded = normalizeMessages(data.messages);
+            if (loaded[0]?.id === "greeting") {
+              loaded[0] = { ...loaded[0], content: GREETINGS[category] ?? GREETINGS.all };
+            }
+            setMessages(loaded);
           } else {
-            setMessages([getGreetingMessage(category)]);
+            setMessages([makeGreeting(category)]);
           }
         } else {
-          setMessages([getGreetingMessage(category)]);
+          const cached = await loadGuestSession(sessionId);
+          if (cached && cached.length > 0) {
+            if (cached[0]?.id === "greeting") {
+              cached[0] = { ...cached[0], content: GREETINGS[category] ?? GREETINGS.all };
+            }
+            setMessages(cached);
+          } else {
+            setMessages([makeGreeting(category)]);
+          }
         }
       } catch {
         showError("Failed to load chat. Please try again.");
-        setMessages([getGreetingMessage(category)]);
+        setMessages([makeGreeting(category)]);
       } finally {
         setIsLoading(false);
       }
     };
+
     loadMessages();
   }, [sessionId, session?.user?.id]);
-
-  const isFirstRender = useRef(true);
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    if (isLoading) return;
-
-    const saveMessages = async () => {
-      if (!session) return;
-      try {
-        const firstUserMessage = messages.find((m) => m.role === "user");
-        const title = firstUserMessage?.content.slice(0, 60) ?? "New Chat";
-
-        await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, messages, category, title }),
-        });
-
-        if (!titleSavedRef.current && firstUserMessage) {
-          titleSavedRef.current = true;
-          onSessionSaved({
-            sessionId,
-            title,
-            category,
-            updatedAt: new Date().toISOString(),
-            createdAt: new Date().toISOString(),
-          });
-        }
-      } catch {
-        showError("Failed to save chat. Your latest messages might not be saved.");
-      }
-    };
-    saveMessages();
-  }, [messages, session, category, isLoading, sessionId]);
 
   const stopStream = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -136,6 +112,41 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
     setIsTyping(false);
     setHasStartedReceiving(false);
   }, []);
+
+  const persistMessages = useCallback(
+    async (finalMessages: Message[]) => {
+      const firstUserMessage = finalMessages.find((m) => m.role === "user");
+      if (!firstUserMessage) return;
+
+      if (session) {
+        try {
+          const title = firstUserMessage.content.slice(0, 60);
+          await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId, messages: finalMessages, category, title }),
+          });
+          onSessionSaved({
+            sessionId,
+            title,
+            category,
+            updatedAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+          });
+        } catch {
+          showError("Failed to save chat. Your latest messages might not be saved.");
+        }
+      } else {
+        const hasRealConvo =
+          finalMessages.some((m) => m.role === "user") &&
+          finalMessages.some((m) => m.role === "assistant" && m.id !== "greeting" && m.content.length > 0);
+        if (hasRealConvo) {
+          await saveGuestSession(sessionId, finalMessages);
+        }
+      }
+    },
+    [session, sessionId, category, onSessionSaved, showError]
+  );
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -150,6 +161,8 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
         content: trimmed,
         timestamp: new Date(),
       };
+
+      const prevMessages = messages;
 
       setMessages((prev) => [...prev, userMsg]);
       setInput("");
@@ -167,6 +180,9 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
+      let succeeded = false;
+      let finalAssistantContent = "";
+
       try {
         const response = await fetch("/api/ai", {
           method: "POST",
@@ -175,7 +191,7 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           body: JSON.stringify({
             userMessage: trimmed,
             category,
-            history: messages
+            history: prevMessages
               .slice(1)
               .slice(-10)
               .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) })),
@@ -192,21 +208,26 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
           if (!hasStartedReceiving) setHasStartedReceiving(true);
+          finalAssistantContent += chunk;
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantMsgId ? { ...m, content: m.content + chunk } : m
             )
           );
         }
+
+        if (finalAssistantContent.trim().length > 0) {
+          succeeded = true;
+        }
       } catch (err: any) {
         if (err?.name !== "AbortError") {
           showError("Sorry, something went wrong. Please try again.");
+          setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
+        } else {
           setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantMsgId
-                ? { ...m, content: "Sorry, something went wrong. Please try again." }
-                : m
-            )
+            prev
+              .map((m) => (m.id === assistantMsgId && m.content === "" ? null : m))
+              .filter(Boolean) as Message[]
           );
         }
       } finally {
@@ -215,31 +236,40 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
         setHasStartedReceiving(false);
       }
 
-      if (session && !aiTitleFiredRef.current) {
-        aiTitleFiredRef.current = true;
-        fetch("/api/chat/title", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId, firstUserMessage: trimmed }),
-        })
-          .then((res) => res.json())
-          .then(({ title }) => {
-            if (title) {
-              onSessionSaved({
-                sessionId,
-                title,
-                category,
-                updatedAt: new Date().toISOString(),
-                createdAt: new Date().toISOString(),
-              });
-            }
+      if (succeeded) {
+        setMessages((prev) => {
+          const finalMessages = prev.map((m) =>
+            m.id === assistantMsgId ? { ...m, content: finalAssistantContent } : m
+          );
+          persistMessages(finalMessages);
+          return finalMessages;
+        });
+
+        if (session && !aiTitleFiredRef.current) {
+          aiTitleFiredRef.current = true;
+          fetch("/api/chat/title", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sessionId, firstUserMessage: trimmed }),
           })
-          .catch(() => {
-            // Title generation failure is non-critical, so we fail silently.
-          });
+            .then((res) => res.json())
+            .then(({ title }) => {
+              if (title) {
+                onSessionSaved({
+                  sessionId,
+                  title,
+                  category,
+                  updatedAt: new Date().toISOString(),
+                  createdAt: new Date().toISOString(),
+                });
+              }
+            })
+            .catch(() => {
+            });
+        }
       }
     },
-    [isTyping, session, category, messages, sessionId, onSessionSaved]
+    [isTyping, session, category, messages, sessionId, onSessionSaved, persistMessages]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -253,17 +283,13 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
     const val = e.target.value;
     if (val.length <= MAX_CHARS) {
       setInput(val);
-      
       if (textareaRef.current) {
-        // Reset height to auto to allow shrinking on delete
         textareaRef.current.style.height = "auto";
-        // Set height to the newly calculated scrollHeight
         textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
       }
     }
   };
 
-  // Reset textarea height back to default when input is cleared
   useEffect(() => {
     if (input === "" && textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -289,7 +315,7 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
 
   return (
     <div className="relative flex flex-col h-dvh w-full bg-black bg-[radial-gradient(ellipse_at_top,var(--tw-gradient-stops))] from-zinc-900/20 via-black to-black overflow-hidden">
-      
+
       {!session && showSignInBanner && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 w-[90%] max-w-md p-1 pl-4 rounded-full shadow-2xl shadow-black/50 bg-zinc-900/80 border border-white/10 backdrop-blur-md flex items-center justify-between z-20 animate-in slide-in-from-top-4 fade-in duration-300">
           <p className="text-sm text-foreground/90 font-medium">Sign in to save progress</p>
@@ -312,7 +338,6 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
       )}
 
       <div className="flex-1 flex flex-col relative min-h-0">
-        {/* Messages Container */}
         <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent px-4 py-8 space-y-4">
           {messages.map((msg) => {
             if (msg.role === "assistant" && msg.content === "" && isTyping) return null;
@@ -321,7 +346,7 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           {isTyping && messages[messages.length - 1]?.content === "" && (
             <TypingIndicator category={category} />
           )}
-          <div className="h-32" ref={bottomRef} /> 
+          <div className="h-32" ref={bottomRef} />
         </div>
 
         {hasOnlyGreeting && (
@@ -332,8 +357,7 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
 
         <div className="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black via-black/95 to-transparent pt-12 pb-4 px-3 sm:px-4 z-20">
           <div className="flex items-end gap-2 max-w-3xl mx-auto">
-            
-            {/* Elegant Textarea Pill */}
+
             <div className="flex flex-1 flex-col rounded-3xl border border-white/5 bg-zinc-900/60 backdrop-blur-xl shadow-lg focus-within:ring-1 focus-within:ring-primary/50 focus-within:border-primary/50 transition-all">
               <div className="flex items-end gap-2 p-1">
                 <textarea

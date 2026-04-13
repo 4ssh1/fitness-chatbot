@@ -30,13 +30,11 @@ const Category = () => {
   );
   const { data: session } = useSession();
 
-  // ── Restore last-used category from sessionStorage ───────────────────────
   useEffect(() => {
     const savedCategory = sessionStorage.getItem("activeCategory") as CategoryType;
     if (savedCategory) setActiveCategory(savedCategory);
   }, []);
 
-  // ── Fetch session list when the user is authenticated ────────────────────
   const fetchSessions = useCallback(async () => {
     if (!session) return;
     try {
@@ -52,18 +50,16 @@ const Category = () => {
     fetchSessions();
   }, [fetchSessions]);
 
-  // ── Category change ───────────────────────────────────────────────────────
   const handleCategoryChange = (cat: CategoryType) => {
     setActiveCategory(cat);
     sessionStorage.setItem("activeCategory", cat);
     setMobileSidebarOpen(false);
   };
 
-  // ── New chat: generate a fresh session id ────────────────────────────────
   const handleNewChat = async () => {
     if (!session) {
       try {
-        await clearConversations(activeCategory);
+        await clearConversations(activeSessionId);
       } catch (err) {
         console.error("Failed to clear guest session:", err);
       }
@@ -72,14 +68,12 @@ const Category = () => {
     setMobileSidebarOpen(false);
   };
 
-  // ── Open history modal (refresh list first) ──────────────────────────────
   const handleHistory = () => {
     fetchSessions();
     setIsHistoryOpen(true);
     setMobileSidebarOpen(false);
   };
 
-  // ── Load a session from history ──────────────────────────────────────────
   const handleSelectHistory = (selectedSession: ChatSession) => {
     setActiveCategory(selectedSession.category);
     sessionStorage.setItem("activeCategory", selectedSession.category);
@@ -87,7 +81,6 @@ const Category = () => {
     setIsHistoryOpen(false);
   };
 
-  // ── Delete a session ─────────────────────────────────────────────────────
   const handleDeleteSession = async (sessionId: string) => {
     if (!session) return;
     try {
