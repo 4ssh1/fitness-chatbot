@@ -89,7 +89,37 @@ export async function POST(req: NextRequest) {
 
     const stream = await askRAG(userMessage, history, category);
 
-    return new Response(stream, {
+    const reader = stream.getReader();
+    let firstChunk: ReadableStreamReadResult<Uint8Array>;
+    try {
+      firstChunk = await reader.read();
+    } catch (streamErr: any) {
+      return NextResponse.json(
+        { error: streamErr?.message || "Failed to generate response" },
+        { status: 503 }
+      );
+    }
+
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+
+    (async () => {
+      try {
+        if (!firstChunk.done && firstChunk.value) {
+          await writer.write(firstChunk.value);
+        }
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          await writer.write(value);
+        }
+        await writer.close();
+      } catch {
+        await writer.abort();
+      }
+    })();
+
+    return new Response(readable, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Transfer-Encoding": "chunked",

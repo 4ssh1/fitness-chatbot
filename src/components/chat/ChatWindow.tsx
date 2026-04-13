@@ -140,7 +140,7 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
             setMessages([]);
           }
         } else {
-          const cached = await loadGuestSession(sessionId);
+          const cached = await loadGuestSession(sessionId, category);
           if (cached && cached.length > 0) {
             setMessages(withoutGreeting(normalizeMessages(cached)));
           } else {
@@ -158,7 +158,7 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
     };
 
     loadMessages();
-  }, [sessionId, session?.user?.id]);
+  }, [sessionId, session?.user?.id ?? "", category]);
 
   const stopStream = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -193,7 +193,7 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           showError("Failed to save chat. Your latest messages might not be saved.");
         }
       } else {
-        await saveGuestSession(sessionId, toSave);
+        await saveGuestSession(sessionId, category, toSave);
       }
     },
     [session, sessionId, category, onSessionSaved, showError]
@@ -203,7 +203,6 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
     async (text: string, existingUserMsgId?: string) => {
       if (!session) setShowSignInBanner(true);
 
-      // If retrying, reuse the existing message id; otherwise create a new one
       const userMsgId = existingUserMsgId ?? Date.now().toString();
       const userMsg: Message = {
         id: userMsgId,

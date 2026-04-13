@@ -5,6 +5,8 @@ const STORE_NAME = "guestSessions";
 const AUTH_STORE = "authSessions"; 
 const DB_VERSION = 3; // bumped for new store
 
+type GuestCategory = "all" | "food" | "workouts" | "form";
+
 const TAB_KEY = "gbebody_tab_sessions";
 
 function registerTabSession(sessionId: string) {
@@ -67,26 +69,40 @@ async function purgeOnce() {
   await purgeStaleEntries();
 }
 
+function getGuestScopedKey(sessionId: string, category: GuestCategory): string {
+  return `${category}:${sessionId}`;
+}
+
 // ── Guest API ─────────────────────────────────────────────────────────────────
 
-export async function saveGuestSession(sessionId: string, messages: any[]) {
+export async function saveGuestSession(
+  sessionId: string,
+  category: GuestCategory,
+  messages: any[]
+) {
+  const scopedSessionKey = getGuestScopedKey(sessionId, category);
   await purgeOnce();
-  registerTabSession(sessionId);
+  registerTabSession(scopedSessionKey);
   const db = await getDB();
-  await db.put(STORE_NAME, messages, sessionId);
+  await db.put(STORE_NAME, messages, scopedSessionKey);
 }
 
-export async function loadGuestSession(sessionId: string): Promise<any[] | null> {
+export async function loadGuestSession(
+  sessionId: string,
+  category: GuestCategory
+): Promise<any[] | null> {
+  const scopedSessionKey = getGuestScopedKey(sessionId, category);
   await purgeOnce();
   const tabSessions = getTabSessions();
-  if (!tabSessions.includes(sessionId)) return null;
+  if (!tabSessions.includes(scopedSessionKey)) return null;
   const db = await getDB();
-  return (await db.get(STORE_NAME, sessionId)) || null;
+  return (await db.get(STORE_NAME, scopedSessionKey)) || null;
 }
 
-export async function clearGuestSession(sessionId: string) {
+export async function clearGuestSession(sessionId: string, category: GuestCategory) {
+  const scopedSessionKey = getGuestScopedKey(sessionId, category);
   const db = await getDB();
-  await db.delete(STORE_NAME, sessionId);
+  await db.delete(STORE_NAME, scopedSessionKey);
 }
 
 /** Cache messages for an authenticated user's session. */
@@ -115,10 +131,14 @@ export async function clearAuthSession(sessionId: string) {
 }
 
 
-export async function clearConversations(sessionId?: string) {
+export async function clearConversations(sessionId?: string, category?: GuestCategory) {
   const db = await getDB();
   if (sessionId) {
-    await db.delete(STORE_NAME, sessionId);
+    if (category) {
+      await db.delete(STORE_NAME, getGuestScopedKey(sessionId, category));
+    } else {
+      await db.delete(STORE_NAME, sessionId);
+    }
     await db.delete(AUTH_STORE, sessionId).catch(() => {});
   } else {
     const tx = db.transaction([STORE_NAME, AUTH_STORE], "readwrite");
