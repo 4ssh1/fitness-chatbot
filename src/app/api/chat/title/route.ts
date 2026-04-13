@@ -29,7 +29,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const prompt = `You are a chat title generator for a fitness and nutrition app called Gbebody AI.
+    let title = "";
+    try {
+      const prompt = `You are a chat title generator for a fitness and nutrition app called Gbebody AI.
 
 Given the user's first message, generate a short, specific chat title.
 
@@ -44,13 +46,17 @@ User message: "${firstUserMessage.slice(0, 300)}"
 
 Respond with ONLY the title, nothing else.`;
 
-    const response = await titleLlm.invoke(prompt);
-    const rawTitle =
-      typeof response.content === "string"
-        ? response.content.trim()
-        : String(response.content).trim();
+      const response = await titleLlm.invoke(prompt);
+      const rawTitle =
+        typeof response.content === "string"
+          ? response.content.trim()
+          : String(response.content).trim();
 
-    const title = rawTitle.replace(/^["']|["']$/g, "").slice(0, 80) || firstUserMessage.slice(0, 60);
+      title = rawTitle.replace(/^['"]|['"]$/g, "").slice(0, 80) || firstUserMessage.slice(0, 60);
+    } catch (err) {
+      // Fallback: use first 10 words from user's message
+      title = firstUserMessage.split(/\s+/).slice(0, 10).join(" ");
+    }
 
     const db = await getMongoDb();
     await db
@@ -62,6 +68,15 @@ Respond with ONLY the title, nothing else.`;
 
     return NextResponse.json({ title });
   } catch (error) {
-    return NextResponse.json({ error: "Title generation failed" }, { status: 500 });
+    try {
+      const body = await req.json();
+      const { firstUserMessage } = body || {};
+      const fallbackTitle = firstUserMessage
+        ? firstUserMessage.split(/\s+/).slice(0, 10).join(" ")
+        : "Chat";
+      return NextResponse.json({ title: fallbackTitle, error: "Title generation failed, fallback used" }, { status: 200 });
+    } catch {
+      return NextResponse.json({ error: "Title generation failed" }, { status: 500 });
+    }
   }
 }
