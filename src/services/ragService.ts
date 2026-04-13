@@ -238,35 +238,10 @@ function getRetryDelayMs(error: any): number | undefined {
   return undefined;
 }
 
-function isQuotaExceeded(error: any): boolean {
-  if (error?.status !== 429) return false;
-
-  const message = String(error?.message || "").toLowerCase();
-  if (message.includes("quota exceeded")) return true;
-
-  const quotaFailure = error?.errorDetails?.find(
-    (detail: any) => detail?.["@type"] === "type.googleapis.com/google.rpc.QuotaFailure"
-  );
-
-  return Boolean(quotaFailure);
-}
-
-function isRetryableError(error: any): boolean {
-  const message = String(error?.message || "").toLowerCase();
-  return (
-    error?.status === 503 ||
-    error?.status === 429 ||
-    message.includes("503") ||
-    message.includes("failed to parse stream") ||
-    message.includes("fetch failed") ||
-    message.includes("high demand")
-  );
-}
-
 function getFriendlyFallbackMessage(error: any): string {
   const retryDelayMs = getRetryDelayMs(error);
 
-  if (isQuotaExceeded(error)) {
+  if (isQuotaError(error)) {
     const waitHint =
       typeof retryDelayMs === "number"
         ? ` Please wait about ${Math.max(1, Math.ceil(retryDelayMs / 1000))} seconds and try again.`
@@ -278,12 +253,39 @@ function getFriendlyFallbackMessage(error: any): string {
   return "I ran into a temporary AI service issue while generating this reply. Please try again shortly.";
 }
 
+
+function isQuotaError(error: unknown): boolean {
+  const err = error as any;
+  return (
+    err?.status === 429 || 
+    String(err?.message || "").includes("429") || 
+    String(err?.message || "").toLowerCase().includes("quota")
+  );
+}
+
+function isTransientError(error: unknown): boolean {
+  const err = error as any;
+  const status = err?.status;
+  const msg = String(err?.message || "").toLowerCase();
+  const name = String(err?.name || "").toLowerCase();
+
+  return (
+    (status && status >= 500) || // Catch 500, 502, 503, 504
+    name.includes("timeout") ||
+    msg.includes("fetch") ||
+    msg.includes("socket") ||
+    msg.includes("network") ||
+    msg.includes("stream") ||
+    msg.includes("premature")
+  );
+}
+
 async function streamWithRetry(
   question: string,
   chatHistory: string,
   category: CategoryType,
-  attempt = 0,
-  llmMode: LlmMode = "primary"
+  llmMode: "primary" | "fallback" = "primary",
+  attempt: number = 0
 ): Promise<ReadableStream> {
   const { persona } = CATEGORY_CONFIG[category];
   const encoder = new TextEncoder();
@@ -291,11 +293,6 @@ async function streamWithRetry(
   return new ReadableStream({
     async start(controller) {
       try {
-        const cacheKey = `${category}:${llmMode}`;
-        if (attempt > 0 && global._cachedChains) {
-          delete global._cachedChains[cacheKey];
-        }
-
         const chain = await getChain(category, llmMode);
         const langchainStream = await chain.stream({ question, chatHistory, persona });
 
@@ -305,25 +302,42 @@ async function streamWithRetry(
           }
         }
         controller.close();
+
       } catch (error: any) {
-        const quotaExceeded = isQuotaExceeded(error);
-        const isRetryable = isRetryableError(error);
-        const providerRetryDelay = getRetryDelayMs(error);
-        const waitMs = providerRetryDelay ?? RETRY_DELAY_MS * (attempt + 1);
+        const isQuota = isQuotaError(error);
+        const isTransient = isTransientError(error);
 
-        if (quotaExceeded && llmMode === "primary" && attempt < MAX_RETRIES) {
-          console.warn("Primary Gemini quota exceeded, switching to fallback model...");
+        if (isQuota && llmMode === "primary") {
+          console.warn("429 Quota Exceeded on Primary Model. Switching to Fallback instantly...");
+          
+          try {
+            const fallbackStream = await streamWithRetry(question, chatHistory, category, "fallback", 0);
+            const reader = fallbackStream.getReader();
+            
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              controller.enqueue(value);
+            }
+            controller.close();
+            return; 
+          } catch (fallbackError) {
+             console.error("Fallback model failed:", fallbackError);
+             controller.enqueue(encoder.encode(getFriendlyFallbackMessage(fallbackError)));
+             controller.close();
+             return;
+          }
+        }
+        if (isTransient && attempt < MAX_RETRIES) {
+          console.warn(`Network blip on ${llmMode.toUpperCase()} model (Attempt ${attempt + 1}/${MAX_RETRIES}). Retrying...`);
+          
+          const waitMs = RETRY_DELAY_MS * (attempt + 1); // Progressive delay: 1s, 2s, 3s
+          await new Promise(r => setTimeout(r, waitMs));
 
           try {
-            const retryStream = await streamWithRetry(
-              question,
-              chatHistory,
-              category,
-              attempt + 1,
-              "fallback"
-            );
-
+            const retryStream = await streamWithRetry(question, chatHistory, category, llmMode, attempt + 1);
             const reader = retryStream.getReader();
+            
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
@@ -331,40 +345,16 @@ async function streamWithRetry(
             }
             controller.close();
             return;
-          } catch (retryError) {
-            controller.error(retryError);
+          } catch (retryPipeError) {
+            controller.enqueue(encoder.encode(getFriendlyFallbackMessage(retryPipeError)));
+            controller.close();
             return;
           }
         }
 
-        if (isRetryable && attempt < MAX_RETRIES) {
-          console.warn(`Gemini stream error (attempt ${attempt + 1}/${MAX_RETRIES}), retrying...`);
-          await new Promise((r) => setTimeout(r, waitMs));
-
-          try {
-            const retryStream = await streamWithRetry(
-              question,
-              chatHistory,
-              category,
-              attempt + 1,
-              llmMode
-            );
-            const reader = retryStream.getReader();
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              controller.enqueue(value);
-            }
-            controller.close();
-          } catch (retryError) {
-            controller.enqueue(encoder.encode(getFriendlyFallbackMessage(retryError)));
-            controller.close();
-          }
-        } else {
-          console.error("Gemini stream failed after retries:", error);
-          controller.enqueue(encoder.encode(getFriendlyFallbackMessage(error)));
-          controller.close();
-        }
+        console.error(`Stream generation failed permanently after ${attempt} retries:`, error);
+        controller.enqueue(encoder.encode(getFriendlyFallbackMessage(error)));
+        controller.close();
       }
     },
   });
