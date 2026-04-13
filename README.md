@@ -1,50 +1,57 @@
 # GbeBody AI
 
-A Nigerian-context fitness chatbot built with Next.js, LangChain, Google Gemini, and MongoDB Atlas Vector Search. It answers questions about workouts, nutrition, and exercise form with Nigerian food alternatives, pidgin flavour, and gender-specific advice.
+GbeBody AI is a Nigerian-context fitness assistant built with Next.js, LangChain, Google Gemini, and MongoDB Atlas Vector Search. It streams answers for workouts, nutrition, and exercise technique, with category-specific retrieval and chat persistence for both guests and signed-in users.
 
 ---
 
-## Features
+## Core Features
 
-- **Streaming responses**  token-by-token output via `ReadableStream`, no waiting for full completion
-- **RAG pipeline**  answers are grounded in a custom knowledge base (foods, meal plans, workouts, form guides) stored as vector embeddings in MongoDB Atlas
-- **Category routing**  four modes: All Topics, Nutrition, Workouts, Form & Technique. Auto-detection falls back to keyword matching when in "all" mode
-- **Gender-aware advice**  workout plans, calorie targets, and tone adjust based on user gender
-- **Nigerian context**  recommends locally available foods (jollof, eba, titus fish, groundnut), acknowledges budget constraints, NEPA challenges, and home workout setups
-- **Conversation persistence**  every message is saved to MongoDB with user, conversation, and message collections
-- **Rotating loading tips**  category-aware fitness tips cycle while the AI is generating
+- Streaming AI responses using `ReadableStream` from `/api/ai`
+- Retrieval-Augmented Generation (RAG) over local knowledge files in `src/data/*.json`
+- Category-aware retrieval with metadata pre-filters (`all`, `food`, `workouts`, `form`)
+- Prompt-injection pattern checks and request validation (Zod)
+- Rate limiting via Upstash (`15 requests / minute` sliding window)
+- Authenticated chat persistence in MongoDB (`chats` collection)
+- Guest + auth session caching in IndexedDB for fast hydration
+- Auto title generation for new chats via Gemini Flash Lite (`/api/chat/title`)
 
 ---
 
-## Architecture
+## How It Works
 
-The application is built on a client-server model featuring a Retrieval-Augmented Generation (RAG) pipeline to deliver contextual and accurate AI-driven fitness advice.
+### 1) Client flow (`src/components/chat/ChatWindow.tsx`)
 
-### Request Lifecycle
+- Loads cached messages first from IndexedDB
+- If authenticated, syncs with `/api/chat?sessionId=...`
+- Sends messages to `/api/ai` and renders streamed chunks live
+- Saves successful conversations through `/api/chat`
+- Triggers one-time AI title generation on the first successful user message
 
-1.  **Frontend Interaction (`ChatWindow.tsx`)**: The user sends a message from the Next.js client. The chat history, category, and user message are bundled and streamed to the backend.
-2.  **API  (`api/ai/route.ts`)**: A dedicated API route receives the request and performs several critical middleware functions:
-    *   **Security**: Validates the request payload, checks for prompt injection, and enforces rate limiting using Upstash Redis.
-    *   **Category Routing**: If the user-selected category is "All Topics," it detects the most relevant category from the message to narrow the search context.
-    *   **Session Management**: Assigns a guest `userId` via cookies if the user is not authenticated.
-3.  **RAG Service (`ragService.ts`)**: This is the core engine of the application. It orchestrates the retrieval and generation process:
-    *   **Retrieval**: It performs a semantic search against a MongoDB Atlas Vector Search index to find the top 4 most relevant knowledge chunks related to the user's query.
-    *   **Context Augmentation**: The retrieved chunks are combined with the chat history and the original user question to form a comprehensive prompt.
-    *   **Generation**: The augmented prompt is sent to the Google Gemini 2.5 Flash model, which generates a response. The response is streamed back token-by-token.
-4.  **Response Streaming**: The backend streams the response directly to the client, allowing the user to see the answer as it's being generated.
-5.  **Persistence**: Upon response completion, the conversation is saved. Authenticated user chats are stored in a MongoDB `chats` collection via the `/api/chat` endpoint, while guest chats are persisted locally in the browser's IndexedDB.
+### 2) AI route (`src/app/api/ai/route.ts`)
 
-### Data Flow 
+- Checks origin against allow-list (`NEXT_PUBLIC_APP_URL` and localhost)
+- Applies Upstash rate limiting by userId or IP fallback
+- Rejects oversized payloads (`content-length > 16000`)
+- Validates request body with `ChatRequestSchema`
+- Performs basic prompt-injection pattern checks
+- Assigns and stores a guest `userId` cookie when needed
+- Streams response from `askRAG(...)`
 
-- Client to Server: The user's input initiates a POST request to /api/ai and is validated.
+### 3) RAG service (`src/services/ragService.ts`)
 
-- Server to Engine (RAG): The request is passed to your RAG Service, which interacts with MongoDB Atlas to perform a vector search for relevant context.
+- Embeddings model: `gemini-embedding-001`
+- Generation model: `gemini-2.5-flash` with fallback to `gemini-2.5-flash-lite`
+- Uses Atlas Vector Search retriever (`k: 5`)
+- Applies metadata `preFilter` by `source` for non-`all` categories
+- Includes retry logic for transient failures and graceful quota fallback
 
-- Engine to LLM: The context and query are sent to Google Gemini, which generates the response and streams tokens back to the engine.
+### 4) Chat persistence routes
 
-- Streaming Back: The tokens stream continuously from the Engine to the Server, and then to the Client UI, where they are displayed in real-time.
-
-- Persistence: Finally, a separate POST request handles saving the full conversation history to MongoDB.
+- `GET /api/chat`: fetch one session or list chat sessions
+- `POST /api/chat`: upsert full session message history
+- `PATCH /api/chat`: rename/update chat title
+- `DELETE /api/chat`: delete session
+- `POST /api/chat/title`: generate and store an AI short title (authenticated users)
 
 ---
 
@@ -52,22 +59,25 @@ The application is built on a client-server model featuring a Retrieval-Augmente
 
 | Layer | Technology |
 |---|---|
-| Framework | Next.js 16 (App Router) |
-| AI Model | Google Gemini 2.5 Flash via LangChain |
+| Framework | Next.js (App Router) |
+| Auth | NextAuth (Google provider, JWT sessions) |
+| AI Models | Gemini 2.5 Flash + Flash Lite fallback via LangChain |
 | Embeddings | `gemini-embedding-001` |
-| Vector Search | MongoDB Atlas Vector Search |
-| Database | MongoDB (users, conversations, messages, knowledge_chunks) |
-| Rate Limiting | Upstash Redis (sliding window) |
+| Vector Store | MongoDB Atlas Vector Search |
+| Database | MongoDB (`users`, `chats`, `knowledge_chunks`) |
 | Validation | Zod |
-| Styling | Tailwind CSS + custom CSS variables |
-| Markdown rendering | `react-markdown` |
+| Rate Limiting | Upstash Ratelimit (`@upstash/ratelimit`, `@upstash/redis`) |
+| Client Cache | IndexedDB (`idb`) |
+| UI | Next.js + Tailwind CSS |
 
 ---
 
 ## Environment Variables
 
+Create a `.env.local` with:
+
 ```bash
-# Google Gemini
+# Gemini
 GEMINI_API_KEY=
 
 # MongoDB
@@ -75,32 +85,44 @@ DATABASE_URL=
 MONGODB_DB_NAME=rag_db
 MONGODB_COLLECTION_NAME=knowledge_chunks
 
-# Upstash Redis (rate limiting)
-UPSTASH_REDIS_REST_URL=
-UPSTASH_REDIS_REST_TOKEN=
+# NextAuth / Google OAuth
+NEXTAUTH_SECRET=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
 
-# App
-NEXT_PUBLIC_APP_URL=https://yourdomain.com
-NODE_ENV=production
+# Origin allow-list used by /api/ai
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Upstash rate limiting (matches src/lib/rateLimit.ts)
+UPSTASH_KV_REST_API_URL=
+UPSTASH_KV_REST_API_TOKEN=
 ```
 
 ---
 
-## Getting Started
+## Local Development
 
 ```bash
-# Install dependencies
 npm install
-
 npm run dev
 ```
 
-### MongoDB Atlas Setup
+Optional: ingest/update your knowledge base after changing files in `src/data`:
 
-1. Create a cluster and get your connection string (`DATABASE_URL`)
-2. Create a database named `ai_db`
-3. After ingestion, go to **Atlas Search → Create Index** on the `knowledge_chunks` collection
-4. Use this index definition:
+```bash
+curl -X POST http://localhost:3000/api/ingest
+```
+
+---
+
+## MongoDB Atlas Vector Search Setup
+
+1. Create your Atlas cluster and set `DATABASE_URL`.
+2. Ensure the target DB/collection match `MONGODB_DB_NAME` and `MONGODB_COLLECTION_NAME`.
+3. Ingest data through `POST /api/ingest`.
+4. In Atlas, create a Vector Search index on `knowledge_chunks` named `vector_index`.
+
+Use this index definition (includes filter fields used by category retrieval):
 
 ```json
 {
@@ -110,10 +132,39 @@ npm run dev
       "path": "embedding",
       "numDimensions": 3072,
       "similarity": "cosine"
+    },
+    {
+      "type": "filter",
+      "path": "source"
+    },
+    {
+      "type": "filter",
+      "path": "type"
     }
   ]
 }
 ```
 
-5. Name the index `anything`
+Why filters are included:
+
+- `source` is used in retriever `preFilter` to scope category results (for example, food mode only searches food/meal-plan docs).
+- `type` is available for future narrowing and analytics by chunk type.
+
+Example category filter shape used in code:
+
+```ts
+filter: {
+  preFilter: {
+    source: { $in: ["foods.json", "meal-plan.json"] }
+  }
+}
+```
+
+---
+
+## Notes
+
+- Guest chats are cached per browser tab in IndexedDB and can be cleared when the tab session is stale.
+- Authenticated chats are cached locally first, then synchronized with MongoDB.
+- Title generation gracefully falls back to first-message truncation if model generation fails.
 
