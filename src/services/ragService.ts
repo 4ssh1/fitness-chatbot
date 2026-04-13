@@ -253,6 +253,12 @@ function getFriendlyFallbackMessage(error: any): string {
   return "I ran into a temporary AI service issue while generating this reply. Please try again shortly.";
 }
 
+function toStreamError(error: unknown): Error {
+  if (error instanceof Error) return error;
+  if (typeof error === "string") return new Error(error);
+  return new Error("I ran into a temporary AI service issue while generating this reply. Please try again shortly.");
+}
+
 
 function isQuotaError(error: unknown): boolean {
   const err = error as any;
@@ -327,8 +333,7 @@ async function streamWithRetry(
             return; 
           } catch (fallbackError) {
              console.error("Fallback model failed:", fallbackError);
-             controller.enqueue(encoder.encode(getFriendlyFallbackMessage(fallbackError)));
-             controller.close();
+             controller.error(toStreamError(getFriendlyFallbackMessage(fallbackError)));
              return;
           }
         }
@@ -350,15 +355,13 @@ async function streamWithRetry(
             controller.close();
             return;
           } catch (retryPipeError) {
-            controller.enqueue(encoder.encode(getFriendlyFallbackMessage(retryPipeError)));
-            controller.close();
+            controller.error(toStreamError(getFriendlyFallbackMessage(retryPipeError)));
             return;
           }
         }
 
         console.error(`Stream generation failed permanently after ${attempt} retries:`, error);
-        controller.enqueue(encoder.encode(getFriendlyFallbackMessage(error)));
-        controller.close();
+        controller.error(toStreamError(getFriendlyFallbackMessage(error)));
       }
     },
   });

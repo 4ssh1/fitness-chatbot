@@ -67,6 +67,25 @@ const getApiErrorMessage = async (response: Response): Promise<string> => {
   return fallbackMessage;
 };
 
+const STREAMED_ERROR_PREFIXES = [
+  "I'm currently hitting AI provider quota limits.",
+  "I ran into a temporary AI service issue while generating this reply.",
+  "Too many requests. Slow down a bit!",
+  "Failed to generate response",
+  "Invalid message content.",
+  "Request too large",
+  "Invalid request",
+];
+
+const isStreamedErrorReply = (content: string): boolean => {
+  const normalized = content.trim().toLowerCase();
+  if (!normalized) return false;
+
+  return STREAMED_ERROR_PREFIXES.some((prefix) =>
+    normalized.startsWith(prefix.toLowerCase())
+  );
+};
+
 export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: ChatWindowProps) {
   const [greetingContent, setGreetingContent] = useState<string>(
     () => GREETINGS[category] ?? GREETINGS.all
@@ -263,6 +282,10 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           );
         }
 
+        if (isStreamedErrorReply(finalAssistantContent)) {
+          throw new Error(finalAssistantContent.trim());
+        }
+
         if (finalAssistantContent.trim().length > 0) succeeded = true;
       } catch (err: any) {
         if (err?.name !== "AbortError") {
@@ -439,11 +462,9 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
               return (
                 <div key={msg.id} className="flex flex-row-reverse items-end gap-3">
                   <div className="max-w-[85%] flex flex-col items-end gap-1.5">
-                    {/* Original message bubble */}
                     <div className="rounded-2xl rounded-br-sm px-4 py-3 text-sm leading-relaxed bg-gray-800/60 text-foreground/60 border border-destructive/20">
                       <p>{msg.content}</p>
                     </div>
-                    {/* Error row */}
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-destructive/80">
                         Failed to send
