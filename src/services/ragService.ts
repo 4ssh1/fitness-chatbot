@@ -61,7 +61,7 @@ const primaryLlm = new ChatGoogleGenerativeAI({
 });
 
 const fallbackLlm = new ChatGoogleGenerativeAI({
-  model: "gemini-1.5-flash",
+  model: "gemini-1.5-flash-latest",
   apiKey: process.env.GEMINI_API_KEY,
   temperature: 0.7,
 });
@@ -268,6 +268,10 @@ function isTransientError(error: unknown): boolean {
   const status = err?.status;
   const msg = String(err?.message || "").toLowerCase();
   const name = String(err?.name || "").toLowerCase();
+
+  if (status && status >= 400 && status < 500 && status !== 429) {
+    return false;
+  }
 
   return (
     (status && status >= 500) || // Catch 500, 502, 503, 504

@@ -96,21 +96,28 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
 
     const loadMessages = async () => {
       setIsLoading(true);
+      let hydratedFromCache = false;
+
       try {
         if (session) {
           const cached = await loadAuthSession(sessionId);
           if (cached && cached.length > 0) {
             setMessages(withoutGreeting(normalizeMessages(cached)));
-            setIsLoading(false); 
+            hydratedFromCache = true;
+            setIsLoading(false);
           }
 
           const res = await fetch(`/api/chat?sessionId=${sessionId}`);
+          if (!res.ok) {
+            throw new Error(`Failed to sync chat from server (${res.status}).`);
+          }
+
           const data = await res.json();
           if (data.messages && data.messages.length > 0) {
             const serverMsgs = withoutGreeting(normalizeMessages(data.messages));
             setMessages(serverMsgs);
             await saveAuthSession(sessionId, serverMsgs);
-          } else if (!cached || cached.length === 0) {
+          } else if (!hydratedFromCache) {
             setMessages([]);
           }
         } else {
@@ -122,8 +129,10 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           }
         }
       } catch {
-        showError("Failed to load chat. Please try again.");
-        setMessages([]);
+        if (!hydratedFromCache) {
+          showError("Failed to load chat. Please try again.");
+          setMessages([]);
+        }
       } finally {
         setIsLoading(false);
       }

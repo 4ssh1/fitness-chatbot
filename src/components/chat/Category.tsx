@@ -18,6 +18,8 @@ export interface ChatSession {
   createdAt: string;
 }
 
+const ACTIVE_SESSION_STORAGE_KEY = "gbebody_active_session_id";
+
 const Category = () => {
   const [activeCategory, setActiveCategory] = useState<CategoryType>("all");
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -33,7 +35,18 @@ const Category = () => {
   useEffect(() => {
     const savedCategory = sessionStorage.getItem("activeCategory") as CategoryType;
     if (savedCategory) setActiveCategory(savedCategory);
+
+    const savedSessionId = sessionStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+    if (savedSessionId) {
+      setActiveSessionId(savedSessionId);
+    } else {
+      sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, activeSessionId);
+    }
   }, []);
+
+  useEffect(() => {
+    sessionStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, activeSessionId);
+  }, [activeSessionId]);
 
   const fetchSessions = useCallback(async () => {
     if (!session) return;
