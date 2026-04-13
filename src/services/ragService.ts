@@ -217,12 +217,12 @@ async function streamWithRetry(
   attempt = 0
 ): Promise<ReadableStream> {
   const { persona } = CATEGORY_CONFIG[category];
-  const chain = await getChain(category);
 
   if (attempt > 0 && global._cachedChains) {
     delete global._cachedChains[category];
   }
 
+  const chain = await getChain(category);
   const langchainStream = await chain.stream({ question, chatHistory, persona });
   const encoder = new TextEncoder();
 
@@ -230,38 +230,36 @@ async function streamWithRetry(
     async start(controller) {
       try {
         for await (const chunk of langchainStream) {
-          if (chunk && typeof chunk === "string") {
-            controller.enqueue(encoder.encode(chunk));
-          } else if (chunk) {
-            controller.enqueue(encoder.encode(String(chunk)));
+          if (chunk) {
+            controller.enqueue(encoder.encode(typeof chunk === "string" ? chunk : String(chunk)));
           }
         }
         controller.close();
       } catch (error: any) {
-        const isStreamError =
+        const isRetryable =
+          error?.status === 503 ||
+          error?.status === 429 ||
+          error?.message?.includes("503") ||
           error?.message?.includes("Failed to parse stream") ||
           error?.message?.includes("fetch failed") ||
-          error?.message?.includes("network") ||
-          error?.status === 503 ||
-          error?.message?.includes("503") ||
-          error?.status === 429||
-          error?.message?.includes("currently experiencing high demand");
+          error?.message?.includes("high demand");
 
-        if (isStreamError && attempt < MAX_RETRIES) {
+        if (isRetryable && attempt < MAX_RETRIES) {
           console.warn(`Gemini stream error (attempt ${attempt + 1}/${MAX_RETRIES}), retrying...`);
-          controller.close();
-
           await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
-          const retryStream = await streamWithRetry(question, chatHistory, category, attempt + 1);
-          const reader = retryStream.getReader();
+
           try {
+            // Get a fresh stream from the retry attempt
+            const retryStream = await streamWithRetry(question, chatHistory, category, attempt + 1);
+            const reader = retryStream.getReader();
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
-              controller.enqueue(value);
+              controller.enqueue(value); // controller is still open here
             }
-          } finally {
-            reader.releaseLock();
+            controller.close();
+          } catch (retryError) {
+            controller.error(retryError);
           }
         } else {
           console.error("Gemini stream failed after retries:", error);
