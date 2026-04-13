@@ -65,11 +65,11 @@ const fallbackLlm = new ChatGoogleGenerativeAI({
   maxRetries: 0,
 });
 
-
 declare global {
   var _cachedVectorStore: MongoDBAtlasVectorSearch | undefined;
   var _cachedChains: Record<string, RunnableSequence> | undefined;
   var _vectorStorePromise: Promise<MongoDBAtlasVectorSearch> | undefined;
+  var _fallbackUntil: number | undefined; // Tracks the cooldown period for 429 errors
 }
 
 export async function getVectorStore(): Promise<MongoDBAtlasVectorSearch> {
@@ -331,6 +331,11 @@ async function streamWithRetry(
 
         if (isQuota && llmMode === "primary") {
           console.warn("-> Quota Exceeded. Switching to Fallback instantly...");
+          
+          const lockoutTime = getRetryDelayMs(error) || (24 * 60 * 60 * 1000); 
+          global._fallbackUntil = Date.now() + lockoutTime;
+          console.log(`-> Primary model locked out for ${Math.round(lockoutTime / 1000 / 60)} minutes.`);
+          
           const fallbackStream = await streamWithRetry(question, chatHistory, category, "fallback", 0);
           const reader = fallbackStream.getReader();
           while (true) {
@@ -371,5 +376,12 @@ export async function askRAG(
   category: CategoryType = "all"
 ): Promise<ReadableStream> {
   const chatHistory = history.map((h) => `${h.role}: ${h.content}`).join("\n");
-  return streamWithRetry(question, chatHistory, category);
+  
+  let initialMode: "primary" | "fallback" = "primary";
+  if (global._fallbackUntil && Date.now() < global._fallbackUntil) {
+    console.log("-> Bypassing primary model (currently on in-memory quota cooldown).");
+    initialMode = "fallback";
+  }
+
+  return streamWithRetry(question, chatHistory, category, initialMode);
 }
