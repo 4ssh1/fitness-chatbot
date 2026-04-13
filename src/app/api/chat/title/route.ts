@@ -5,7 +5,7 @@ import { getMongoDb } from "@/lib/mongodb";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
 const titleLlm = new ChatGoogleGenerativeAI({
-  model: "gemini-1.5-flash-latest",
+  model: "gemini-2.5-flash-lite",
   apiKey: process.env.GEMINI_API_KEY,
   temperature: 0.3, // low temp = consistent, concise output
 });

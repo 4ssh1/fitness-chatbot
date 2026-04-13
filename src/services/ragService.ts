@@ -61,7 +61,7 @@ const primaryLlm = new ChatGoogleGenerativeAI({
 });
 
 const fallbackLlm = new ChatGoogleGenerativeAI({
-  model: "gemini-1.5-flash-latest",
+  model: "gemini-2.5-flash-lite",
   apiKey: process.env.GEMINI_API_KEY,
   temperature: 0.7,
 });
