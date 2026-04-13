@@ -12,9 +12,6 @@ import { HistoryItem } from "@/types/chat";
 
 export type CategoryType = "all" | "food" | "workouts" | "form";
 
-// ── Category config ───────────────────────────────────────────────────────────
-// Maps each category to: which knowledge-base source files are relevant
-
 const CATEGORY_CONFIG: Record<
   CategoryType,
   { sources: string[]; persona: string }
@@ -48,7 +45,6 @@ If the user asks something unrelated to exercise form or technique, gently redir
   },
 };
 
-
 const embeddings = new GoogleGenerativeAIEmbeddings({
   model: "gemini-embedding-001",
   apiKey: process.env.GEMINI_API_KEY,
@@ -58,87 +54,68 @@ const primaryLlm = new ChatGoogleGenerativeAI({
   model: "gemini-2.5-flash",
   apiKey: process.env.GEMINI_API_KEY,
   temperature: 0.7,
+  maxRetries: 0,
 });
 
 const fallbackLlm = new ChatGoogleGenerativeAI({
   model: "gemini-2.5-flash-lite",
   apiKey: process.env.GEMINI_API_KEY,
   temperature: 0.7,
+  maxRetries: 0,
 });
-
-const llmWithFallback = primaryLlm.withFallbacks([fallbackLlm]);
 
 
 declare global {
   var _cachedVectorStore: MongoDBAtlasVectorSearch | undefined;
-  // Per-category chain cache — keyed by `${category}:${mode}`
   var _cachedChains: Record<string, RunnableSequence> | undefined;
+  var _vectorStorePromise: Promise<MongoDBAtlasVectorSearch> | undefined;
 }
-// ── Vector store (shared across categories) ───────────────────────────────────
 
 export async function getVectorStore(): Promise<MongoDBAtlasVectorSearch> {
-  if (global._cachedVectorStore) {
-    return global._cachedVectorStore;
+  if (global._cachedVectorStore) return global._cachedVectorStore;
+
+  if (!global._vectorStorePromise) {
+    global._vectorStorePromise = (async () => {
+      const collectionName = process.env.MONGODB_COLLECTION_NAME || "knowledge_chunks";
+      const dbName = process.env.MONGODB_DB_NAME || "rag_db";
+      const mongoClient = await clientPromise;
+      const collection = mongoClient.db(dbName).collection(collectionName) as any;
+      global._cachedVectorStore = new MongoDBAtlasVectorSearch(embeddings, {
+        collection,
+        indexName: "vector_index",
+        textKey: "text",
+        embeddingKey: "embedding",
+      });
+      return global._cachedVectorStore;
+    })();
   }
 
-  const collectionName = process.env.MONGODB_COLLECTION_NAME || "knowledge_chunks";
-  const dbName = process.env.MONGODB_DB_NAME || "rag_db";
-
-  const mongoClient = await clientPromise;
-  const collection = mongoClient.db(dbName).collection(collectionName) as any;
-
-  global._cachedVectorStore = new MongoDBAtlasVectorSearch(embeddings, {
-    collection,
-    indexName: "vector_index",
-    textKey: "text",
-    embeddingKey: "embedding",
-  });
-
-  return global._cachedVectorStore;
+  return global._vectorStorePromise;
 }
-
-// ── Category-aware retriever ───────────────────────────────────────────────────
-// Filters retrieved chunks to only the source files relevant to the active category.
 
 function getRetriever(category: CategoryType) {
   const { sources } = CATEGORY_CONFIG[category];
+  const k = category === "all" ? 5 : 3;
 
   return {
     invoke: async (question: string): Promise<Document[]> => {
       const vectorStore = await getVectorStore();
 
       if (category === "all") {
-        // No filter — retrieve from all sources
-        const retriever = vectorStore.asRetriever({ k: 5 });
-        return retriever.invoke(question);
+        return vectorStore.asRetriever({ k }).invoke(question);
       }
 
-      // Pre-filter by metadata.source so retrieval stays on-topic
-      const retriever = vectorStore.asRetriever({
-        k: 5,
-        filter: {
-          preFilter: {
-            source: { $in: sources },
-          },
-        },
-      });
-
-      return retriever.invoke(question);
+      return vectorStore
+        .asRetriever({
+          k,
+          filter: { preFilter: { source: { $in: sources } } },
+        })
+        .invoke(question);
     },
   };
 }
 
-type LlmMode = "primary" | "fallback";
-
-async function getChain(category: CategoryType, llmMode: LlmMode): Promise<RunnableSequence> {
-  if (!global._cachedChains) global._cachedChains = {};
-
-  const cacheKey = `${category}:${llmMode}`;
-  if (global._cachedChains[cacheKey]) return global._cachedChains[cacheKey]!;
-
-  const retriever = getRetriever(category);
-
-  const prompt = PromptTemplate.fromTemplate(`
+const PROMPT = PromptTemplate.fromTemplate(`
 {persona}
 
 Use the knowledge base context below when it is relevant. If the context doesn't fully cover the question, answer from your own expertise — do NOT say you lack information.
@@ -153,15 +130,21 @@ Chat History:
 User: {question}
 Assistant:`);
 
-  const model = llmMode === "fallback" ? fallbackLlm : llmWithFallback;
+type LlmMode = "primary" | "fallback";
+
+async function getChain(category: CategoryType, llmMode: LlmMode): Promise<RunnableSequence> {
+  if (!global._cachedChains) global._cachedChains = {};
+
+  const cacheKey = `${category}:${llmMode}`;
+  if (global._cachedChains[cacheKey]) return global._cachedChains[cacheKey]!;
+
+  const retriever = getRetriever(category);
+  
+  const model = llmMode === "fallback" ? fallbackLlm : primaryLlm;
 
   global._cachedChains[cacheKey] = RunnableSequence.from([
     {
-      context: async (input: {
-        question: string;
-        chatHistory: string;
-        persona: string;
-      }) => {
+      context: async (input: { question: string; chatHistory: string; persona: string }) => {
         const docs = await retriever.invoke(input.question);
         return docs.length > 0
           ? docs.map((d: Document) => d.pageContent).join("\n\n")
@@ -174,13 +157,22 @@ Assistant:`);
       persona: (input: { question: string; chatHistory: string; persona: string }) =>
         input.persona,
     },
-    prompt,
+    PROMPT,
     model,
     new StringOutputParser(),
   ]);
 
   return global._cachedChains[cacheKey]!;
 }
+
+(async () => {
+  try {
+    await getVectorStore();
+    const CATEGORIES: CategoryType[] = ["all", "food", "workouts", "form"];
+    await Promise.all(CATEGORIES.map((cat) => getChain(cat, "primary")));
+  } catch {
+  }
+})();
 
 export async function ingestKnowledgeBase() {
   const db = await getMongoDb();
@@ -223,16 +215,12 @@ function getRetryDelayMs(error: any): number | undefined {
   const retryDelay = retryInfo?.retryDelay;
   if (typeof retryDelay === "string") {
     const retryMatch = retryDelay.match(/([\d.]+)s/i);
-    if (retryMatch) {
-      return Math.ceil(Number(retryMatch[1]) * 1000);
-    }
+    if (retryMatch) return Math.ceil(Number(retryMatch[1]) * 1000);
   }
 
   if (typeof error?.message === "string") {
     const messageMatch = error.message.match(/Please retry in\s+([\d.]+)s/i);
-    if (messageMatch) {
-      return Math.ceil(Number(messageMatch[1]) * 1000);
-    }
+    if (messageMatch) return Math.ceil(Number(messageMatch[1]) * 1000);
   }
 
   return undefined;
@@ -246,7 +234,6 @@ function getFriendlyFallbackMessage(error: any): string {
       typeof retryDelayMs === "number"
         ? ` Please wait about ${Math.max(1, Math.ceil(retryDelayMs / 1000))} seconds and try again.`
         : " Please try again in a little while.";
-
     return `I'm currently hitting AI provider quota limits.${waitHint}`;
   }
 
@@ -256,15 +243,16 @@ function getFriendlyFallbackMessage(error: any): string {
 function toStreamError(error: unknown): Error {
   if (error instanceof Error) return error;
   if (typeof error === "string") return new Error(error);
-  return new Error("I ran into a temporary AI service issue while generating this reply. Please try again shortly.");
+  return new Error(
+    "I ran into a temporary AI service issue while generating this reply. Please try again shortly."
+  );
 }
-
 
 function isQuotaError(error: unknown): boolean {
   const err = error as any;
   return (
-    err?.status === 429 || 
-    String(err?.message || "").includes("429") || 
+    err?.status === 429 ||
+    String(err?.message || "").includes("429") ||
     String(err?.message || "").toLowerCase().includes("quota")
   );
 }
@@ -275,12 +263,10 @@ function isTransientError(error: unknown): boolean {
   const msg = String(err?.message || "").toLowerCase();
   const name = String(err?.name || "").toLowerCase();
 
-  if (status && status >= 400 && status < 500 && status !== 429) {
-    return false;
-  }
+  if (status && status >= 400 && status < 500 && status !== 429) return false;
 
   return (
-    (status && status >= 500) || // Catch 500, 502, 503, 504
+    (status && status >= 500) ||
     name.includes("timeout") ||
     msg.includes("fetch") ||
     msg.includes("socket") ||
@@ -300,67 +286,78 @@ async function streamWithRetry(
   const { persona } = CATEGORY_CONFIG[category];
   const encoder = new TextEncoder();
 
+  console.log(`\n--- STARTING REQUEST (Attempt ${attempt}) ---`);
+  
+  console.time("1. Setup & Get Chains");
+  const [chain, vectorStore] = await Promise.all([
+    getChain(category, llmMode),
+    getVectorStore(),
+  ]);
+  console.timeEnd("1. Setup & Get Chains");
+
   return new ReadableStream({
     async start(controller) {
       try {
-        const chain = await getChain(category, llmMode);
+        console.time("2. Time to First Token (Retrieval + LLM)");
+        console.log("-> Sending request to LangChain...");
+        
         const langchainStream = await chain.stream({ question, chatHistory, persona });
-
+        
+        let firstToken = false;
         for await (const chunk of langchainStream) {
+          if (!firstToken) {
+            console.timeEnd("2. Time to First Token (Retrieval + LLM)");
+            console.log("-> Streaming started!");
+            firstToken = true;
+          }
           if (chunk) {
-            controller.enqueue(encoder.encode(typeof chunk === "string" ? chunk : String(chunk)));
+            controller.enqueue(
+              encoder.encode(typeof chunk === "string" ? chunk : String(chunk))
+            );
           }
         }
         controller.close();
-
+        console.log("--- REQUEST COMPLETE ---\n");
+        
       } catch (error: any) {
+        console.timeEnd("2. Time to First Token (Retrieval + LLM)");
+        console.error("!!! ERROR CAUGHT IN STREAM !!!");
+        console.error("Error Message:", error.message);
+        console.error("Status Code:", error?.status || error?.response?.status);
+        
         const isQuota = isQuotaError(error);
         const isTransient = isTransientError(error);
 
         if (isQuota && llmMode === "primary") {
-          console.warn("429 Quota Exceeded on Primary Model. Switching to Fallback instantly...");
-          
-          try {
-            const fallbackStream = await streamWithRetry(question, chatHistory, category, "fallback", 0);
-            const reader = fallbackStream.getReader();
-            
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              controller.enqueue(value);
-            }
-            controller.close();
-            return; 
-          } catch (fallbackError) {
-             console.error("Fallback model failed:", fallbackError);
-             controller.error(toStreamError(getFriendlyFallbackMessage(fallbackError)));
-             return;
+          console.warn("-> Quota Exceeded. Switching to Fallback instantly...");
+          const fallbackStream = await streamWithRetry(question, chatHistory, category, "fallback", 0);
+          const reader = fallbackStream.getReader();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            controller.enqueue(value);
           }
+          controller.close();
+          return;
         }
+
         if (isTransient && attempt < MAX_RETRIES) {
-          console.warn(`Network blip on ${llmMode.toUpperCase()} model (Attempt ${attempt + 1}/${MAX_RETRIES}). Retrying...`);
-          
-          const waitMs = RETRY_DELAY_MS * (attempt + 1); // Progressive delay: 1s, 2s, 3s
-          await new Promise(r => setTimeout(r, waitMs));
+          console.warn(`-> Network blip (Attempt ${attempt + 1}/${MAX_RETRIES}). Retrying...`);
+          const waitMs = RETRY_DELAY_MS * (attempt + 1);
+          await new Promise((r) => setTimeout(r, waitMs));
 
-          try {
-            const retryStream = await streamWithRetry(question, chatHistory, category, llmMode, attempt + 1);
-            const reader = retryStream.getReader();
-            
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              controller.enqueue(value);
-            }
-            controller.close();
-            return;
-          } catch (retryPipeError) {
-            controller.error(toStreamError(getFriendlyFallbackMessage(retryPipeError)));
-            return;
+          const retryStream = await streamWithRetry(question, chatHistory, category, llmMode, attempt + 1);
+          const reader = retryStream.getReader();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            controller.enqueue(value);
           }
+          controller.close();
+          return;
         }
 
-        console.error(`Stream generation failed permanently after ${attempt} retries:`, error);
+        console.error("-> FAILED PERMANENTLY");
         controller.error(toStreamError(getFriendlyFallbackMessage(error)));
       }
     },
