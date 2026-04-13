@@ -65,6 +65,14 @@ const Category = () => {
   const handleCategoryChange = (cat: CategoryType) => {
     setActiveCategory(cat);
     sessionStorage.setItem("activeCategory", cat);
+    
+    // If authenticated, switching categories must create a new chat session 
+    // to prevent the old category's history from loading into the new one.
+    // Guest mode is unaffected as it queries IndexedDB by category name.
+    if (session) {
+      setActiveSessionId(crypto.randomUUID());
+    }
+    
     setMobileSidebarOpen(false);
   };
 
@@ -109,7 +117,6 @@ const Category = () => {
     }
   };
 
-  // ── Called by ChatWindow when a new session title is derived ─────────────
   const handleSessionSaved = (savedSession: ChatSession) => {
     setSessions((prev) => {
       const exists = prev.find((s) => s.sessionId === savedSession.sessionId);
@@ -124,7 +131,6 @@ const Category = () => {
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-black">
-      {/* Overlay for mobile */}
       {mobileSidebarOpen && (
         <div
           className="fixed inset-0 bg-black/60 z-40 lg:hidden"
@@ -132,7 +138,6 @@ const Category = () => {
         />
       )}
 
-      {/* Sidebar */}
       <div
         className={`fixed top-0 left-0 h-full z-50 transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${
           mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
@@ -149,9 +154,7 @@ const Category = () => {
         />
       </div>
 
-      {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 h-full">
-        {/* Mobile Header */}
         <div className="h-14 flex items-center px-3 border-b border-border shrink-0 lg:hidden">
           <button
             onClick={() => setMobileSidebarOpen(true)}

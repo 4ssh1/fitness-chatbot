@@ -110,6 +110,10 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
 
   useEffect(() => {
     aiTitleFiredRef.current = false;
+    
+    //Clear messages immediately to prevent the previous session's
+    // messages from showing while the new session is loading.
+    setMessages([]);
 
     const loadMessages = async () => {
       setIsLoading(true);
@@ -125,27 +129,22 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           if (data.messages && data.messages.length > 0) {
             const serverMsgs = withoutGreeting(normalizeMessages(data.messages));
             setMessages(serverMsgs);
-          } else {
-            setMessages([]);
           }
         } else {
           const cached = await loadGuestSession(category);
           if (cached && cached.length > 0) {
             setMessages(withoutGreeting(normalizeMessages(cached)));
-          } else {
-            setMessages([]);
           }
         }
       } catch {
         showError("Failed to load chat. Please try again.");
-        setMessages([]);
       } finally {
         setIsLoading(false);
       }
     };
 
     loadMessages();
-  }, [sessionId, category, session?.user?.id ?? ""]);
+  }, [sessionId, category, session?.user?.id]);
 
   const stopStream = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -440,7 +439,6 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           <ChatMessage key="greeting" message={greetingMessage} />
 
           {messages.map((msg) => {
-            // Hide empty assistant placeholder while streaming
             if (msg.role === "assistant" && msg.content === "" && isTyping) return null;
 
             if (msg.failed) {
