@@ -20,12 +20,6 @@ interface Message {
   timestamp: Date;
 }
 
-const normalizeMessages = (msgs: any[]): Message[] =>
-  msgs.map((msg) => ({
-    ...msg,
-    timestamp: msg.timestamp instanceof Date ? msg.timestamp : new Date(msg.timestamp),
-  }));
-
 interface ChatWindowProps {
   sessionId: string;
   category: "all" | "food" | "workouts" | "form";
@@ -33,7 +27,7 @@ interface ChatWindowProps {
   onSessionSaved: (session: ChatSession) => void;
 }
 
-const GREETINGS: Record<string, string> = {
+export const GREETINGS: Record<string, string> = {
   all: "Hey! I'm **Gbebody AI**, your personal fitness assistant \n\n What's your goal today?",
   food: "**Nutrition Mode** activated!\n\nI can help with meal plans, macros, calorie targets, pre/post workout nutrition, and healthy recipes. What are you working towards?",
   workouts:
@@ -41,17 +35,23 @@ const GREETINGS: Record<string, string> = {
   form: "**Form & Technique Mode** activated!\n\nI'll guide you through proper movement patterns, cues to watch for, and how to avoid injury. Which exercise or movement do you want to nail?",
 };
 
-function makeGreeting(cat: string): Message {
-  return {
-    id: "greeting",
-    role: "assistant",
-    content: GREETINGS[cat] ?? GREETINGS.all,
-    timestamp: new Date(),
-  };
-}
+
+const normalizeMessages = (msgs: any[]): Message[] =>
+  msgs.map((msg) => ({
+    ...msg,
+    timestamp: msg.timestamp instanceof Date ? msg.timestamp : new Date(msg.timestamp),
+  }));
+
+const withoutGreeting = (msgs: Message[]) => msgs.filter((m) => m.id !== "greeting");
+
 
 export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: ChatWindowProps) {
+  const [greetingContent, setGreetingContent] = useState<string>(
+    () => GREETINGS[category] ?? GREETINGS.all
+  );
+
   const [messages, setMessages] = useState<Message[]>([]);
+
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [hasStartedReceiving, setHasStartedReceiving] = useState(false);
@@ -67,37 +67,35 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
   const { showError } = useToast();
 
   useEffect(() => {
+    setGreetingContent(GREETINGS[category] ?? GREETINGS.all);
+  }, [category]);
+
+  // ── Load conversation on mount / sessionId / auth change ─────────────────
+  useEffect(() => {
     aiTitleFiredRef.current = false;
 
     const loadMessages = async () => {
       setIsLoading(true);
       try {
+        let loaded: Message[] = [];
+
         if (session) {
           const res = await fetch(`/api/chat?sessionId=${sessionId}`);
           const data = await res.json();
           if (data.messages && data.messages.length > 0) {
-            const loaded = normalizeMessages(data.messages);
-            if (loaded[0]?.id === "greeting") {
-              loaded[0] = { ...loaded[0], content: GREETINGS[category] ?? GREETINGS.all };
-            }
-            setMessages(loaded);
-          } else {
-            setMessages([makeGreeting(category)]);
+            loaded = withoutGreeting(normalizeMessages(data.messages));
           }
         } else {
           const cached = await loadGuestSession(sessionId);
           if (cached && cached.length > 0) {
-            if (cached[0]?.id === "greeting") {
-              cached[0] = { ...cached[0], content: GREETINGS[category] ?? GREETINGS.all };
-            }
-            setMessages(cached);
-          } else {
-            setMessages([makeGreeting(category)]);
+            loaded = withoutGreeting(normalizeMessages(cached));
           }
         }
+
+        setMessages(loaded);
       } catch {
         showError("Failed to load chat. Please try again.");
-        setMessages([makeGreeting(category)]);
+        setMessages([]);
       } finally {
         setIsLoading(false);
       }
@@ -115,12 +113,12 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
 
   const persistMessages = useCallback(
     async (finalMessages: Message[]) => {
-      const firstUserMessage = finalMessages.find((m) => m.role === "user");
-      if (!firstUserMessage) return;
+      if (finalMessages.length === 0) return;
 
       if (session) {
         try {
-          const title = firstUserMessage.content.slice(0, 60);
+          const firstUser = finalMessages.find((m) => m.role === "user");
+          const title = firstUser?.content.slice(0, 60) ?? "New Chat";
           await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -137,12 +135,7 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           showError("Failed to save chat. Your latest messages might not be saved.");
         }
       } else {
-        const hasRealConvo =
-          finalMessages.some((m) => m.role === "user") &&
-          finalMessages.some((m) => m.role === "assistant" && m.id !== "greeting" && m.content.length > 0);
-        if (hasRealConvo) {
-          await saveGuestSession(sessionId, finalMessages);
-        }
+        await saveGuestSession(sessionId, finalMessages);
       }
     },
     [session, sessionId, category, onSessionSaved, showError]
@@ -192,7 +185,6 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
             userMessage: trimmed,
             category,
             history: prevMessages
-              .slice(1)
               .slice(-10)
               .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) })),
           }),
@@ -216,9 +208,7 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           );
         }
 
-        if (finalAssistantContent.trim().length > 0) {
-          succeeded = true;
-        }
+        if (finalAssistantContent.trim().length > 0) succeeded = true;
       } catch (err: any) {
         if (err?.name !== "AbortError") {
           showError("Sorry, something went wrong. Please try again.");
@@ -264,8 +254,7 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
                 });
               }
             })
-            .catch(() => {
-            });
+            .catch(() => {});
         }
       }
     },
@@ -299,16 +288,25 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
   const charsLeft = MAX_CHARS - input.length;
   const nearLimit = charsLeft <= 100;
   const atLimit = charsLeft === 0;
-  const hasOnlyGreeting = messages.length === 1 && !isTyping;
+  const hasOnlyGreeting = messages.length === 0 && !isTyping;
   const canSend = input.trim().length > 0 && !isTyping && !atLimit;
   const showStopButton = isTyping && hasStartedReceiving;
   const showDisabledSendButton = isTyping && !hasStartedReceiving;
+
+  const greetingMessage: Message = {
+    id: "greeting",
+    role: "assistant",
+    content: greetingContent,
+    timestamp: new Date(),
+  };
 
   if (isLoading) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-black min-h-dvh">
         <div className="size-8 border-2 border-primary border-t-transparent rounded-full animate-spin mb-4" />
-        <div className="text-muted-foreground animate-pulse text-sm">Initializing training protocol...</div>
+        <div className="text-muted-foreground animate-pulse text-sm">
+          Initializing training protocol...
+        </div>
       </div>
     );
   }
@@ -339,10 +337,14 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
 
       <div className="flex-1 flex flex-col relative min-h-0">
         <div className="flex-1 overflow-y-auto min-h-0 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent px-4 py-8 space-y-4">
+
+          <ChatMessage key="greeting" message={greetingMessage} />
+
           {messages.map((msg) => {
             if (msg.role === "assistant" && msg.content === "" && isTyping) return null;
             return <ChatMessage key={msg.id} message={msg} />;
           })}
+
           {isTyping && messages[messages.length - 1]?.content === "" && (
             <TypingIndicator category={category} />
           )}
