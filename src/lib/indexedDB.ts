@@ -2,7 +2,8 @@ import { openDB } from "idb";
 
 const DB_NAME = "GbebodyChat";
 const STORE_NAME = "guestSessions";
-const DB_VERSION = 2; 
+const AUTH_STORE = "authSessions"; 
+const DB_VERSION = 3; // bumped for new store
 
 const TAB_KEY = "gbebody_tab_sessions";
 
@@ -23,19 +24,22 @@ function getTabSessions(): string[] {
   }
 }
 
-
 let dbPromise: ReturnType<typeof openDB> | null = null;
 
 function getDB() {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
       upgrade(db, oldVersion) {
-        // v1 used category as key — drop it and recreate
+        // v1 → v2: recreate guest store with sessionId key
         if (oldVersion < 2 && db.objectStoreNames.contains(STORE_NAME)) {
           db.deleteObjectStore(STORE_NAME);
         }
         if (!db.objectStoreNames.contains(STORE_NAME)) {
-          db.createObjectStore(STORE_NAME); // key = sessionId
+          db.createObjectStore(STORE_NAME);
+        }
+        // v3: add auth session cache store
+        if (!db.objectStoreNames.contains(AUTH_STORE)) {
+          db.createObjectStore(AUTH_STORE);
         }
       },
     });
@@ -43,7 +47,6 @@ function getDB() {
   return dbPromise;
 }
 
-// Called once on first load so stale data from previous tabs is cleaned up.
 async function purgeStaleEntries() {
   try {
     const db = await getDB();
@@ -54,8 +57,7 @@ async function purgeStaleEntries() {
         await db.delete(STORE_NAME, key);
       }
     }
-  } catch {
-  }
+  } catch {}
 }
 
 let purgeRan = false;
@@ -65,7 +67,7 @@ async function purgeOnce() {
   await purgeStaleEntries();
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
+// ── Guest API ─────────────────────────────────────────────────────────────────
 
 export async function saveGuestSession(sessionId: string, messages: any[]) {
   await purgeOnce();
@@ -87,13 +89,41 @@ export async function clearGuestSession(sessionId: string) {
   await db.delete(STORE_NAME, sessionId);
 }
 
+/** Cache messages for an authenticated user's session. */
+export async function saveAuthSession(sessionId: string, messages: any[]) {
+  try {
+    const db = await getDB();
+    await db.put(AUTH_STORE, { messages, cachedAt: Date.now() }, sessionId);
+  } catch {}
+}
+
+export async function loadAuthSession(sessionId: string): Promise<any[] | null> {
+  try {
+    const db = await getDB();
+    const entry = await db.get(AUTH_STORE, sessionId);
+    return entry?.messages ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearAuthSession(sessionId: string) {
+  try {
+    const db = await getDB();
+    await db.delete(AUTH_STORE, sessionId);
+  } catch {}
+}
+
+
 export async function clearConversations(sessionId?: string) {
   const db = await getDB();
   if (sessionId) {
     await db.delete(STORE_NAME, sessionId);
+    await db.delete(AUTH_STORE, sessionId).catch(() => {});
   } else {
-    const tx = db.transaction(STORE_NAME, "readwrite");
+    const tx = db.transaction([STORE_NAME, AUTH_STORE], "readwrite");
     await tx.objectStore(STORE_NAME).clear();
+    await tx.objectStore(AUTH_STORE).clear();
     await tx.done;
   }
 }

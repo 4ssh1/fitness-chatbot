@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { IoSend, IoStop, IoClose } from "react-icons/io5";
+import { MdRefresh } from "react-icons/md";
 import { ChatMessage } from "@/components/chat/Message";
 import { TypingIndicator } from "@/components/chat/Indicator";
 import { QuickPrompts } from "@/components/chat/QuickPrompts";
@@ -9,7 +10,12 @@ import { useSession, signIn } from "next-auth/react";
 import { MicButton } from "@/components/chat/Mic";
 import { useToast } from "@/hooks/useToast";
 import { type ChatSession } from "./Category";
-import { saveGuestSession, loadGuestSession } from "@/lib/indexedDB";
+import {
+  saveGuestSession,
+  loadGuestSession,
+  saveAuthSession,
+  loadAuthSession,
+} from "@/lib/indexedDB";
 
 const MAX_CHARS = 1000;
 
@@ -18,6 +24,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: Date;
+  failed?: boolean; 
 }
 
 interface ChatWindowProps {
@@ -35,15 +42,15 @@ export const GREETINGS: Record<string, string> = {
   form: "**Form & Technique Mode** activated!\n\nI'll guide you through proper movement patterns, cues to watch for, and how to avoid injury. Which exercise or movement do you want to nail?",
 };
 
-
 const normalizeMessages = (msgs: any[]): Message[] =>
   msgs.map((msg) => ({
     ...msg,
     timestamp: msg.timestamp instanceof Date ? msg.timestamp : new Date(msg.timestamp),
+    failed: undefined,
   }));
 
 const withoutGreeting = (msgs: Message[]) => msgs.filter((m) => m.id !== "greeting");
-
+const withoutFailed = (msgs: Message[]) => msgs.filter((m) => !m.failed);
 
 export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: ChatWindowProps) {
   const [greetingContent, setGreetingContent] = useState<string>(
@@ -51,7 +58,6 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
   );
 
   const [messages, setMessages] = useState<Message[]>([]);
-
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [hasStartedReceiving, setHasStartedReceiving] = useState(false);
@@ -70,29 +76,36 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
     setGreetingContent(GREETINGS[category] ?? GREETINGS.all);
   }, [category]);
 
-  // ── Load conversation on mount / sessionId / auth change ─────────────────
   useEffect(() => {
     aiTitleFiredRef.current = false;
 
     const loadMessages = async () => {
       setIsLoading(true);
       try {
-        let loaded: Message[] = [];
-
         if (session) {
+          const cached = await loadAuthSession(sessionId);
+          if (cached && cached.length > 0) {
+            setMessages(withoutGreeting(normalizeMessages(cached)));
+            setIsLoading(false); 
+          }
+
           const res = await fetch(`/api/chat?sessionId=${sessionId}`);
           const data = await res.json();
           if (data.messages && data.messages.length > 0) {
-            loaded = withoutGreeting(normalizeMessages(data.messages));
+            const serverMsgs = withoutGreeting(normalizeMessages(data.messages));
+            setMessages(serverMsgs);
+            await saveAuthSession(sessionId, serverMsgs);
+          } else if (!cached || cached.length === 0) {
+            setMessages([]);
           }
         } else {
           const cached = await loadGuestSession(sessionId);
           if (cached && cached.length > 0) {
-            loaded = withoutGreeting(normalizeMessages(cached));
+            setMessages(withoutGreeting(normalizeMessages(cached)));
+          } else {
+            setMessages([]);
           }
         }
-
-        setMessages(loaded);
       } catch {
         showError("Failed to load chat. Please try again.");
         setMessages([]);
@@ -113,16 +126,18 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
 
   const persistMessages = useCallback(
     async (finalMessages: Message[]) => {
-      if (finalMessages.length === 0) return;
+      const toSave = withoutFailed(finalMessages);
+      if (toSave.length === 0) return;
 
       if (session) {
+        await saveAuthSession(sessionId, toSave);
         try {
-          const firstUser = finalMessages.find((m) => m.role === "user");
+          const firstUser = toSave.find((m) => m.role === "user");
           const title = firstUser?.content.slice(0, 60) ?? "New Chat";
           await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sessionId, messages: finalMessages, category, title }),
+            body: JSON.stringify({ sessionId, messages: toSave, category, title }),
           });
           onSessionSaved({
             sessionId,
@@ -135,29 +150,35 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           showError("Failed to save chat. Your latest messages might not be saved.");
         }
       } else {
-        await saveGuestSession(sessionId, finalMessages);
+        await saveGuestSession(sessionId, toSave);
       }
     },
     [session, sessionId, category, onSessionSaved, showError]
   );
 
-  const sendMessage = useCallback(
-    async (text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed || isTyping || trimmed.length > MAX_CHARS) return;
-
+  const executeSend = useCallback(
+    async (text: string, existingUserMsgId?: string) => {
       if (!session) setShowSignInBanner(true);
 
+      // If retrying, reuse the existing message id; otherwise create a new one
+      const userMsgId = existingUserMsgId ?? Date.now().toString();
       const userMsg: Message = {
-        id: Date.now().toString(),
+        id: userMsgId,
         role: "user",
-        content: trimmed,
+        content: text,
         timestamp: new Date(),
+        failed: false,
       };
 
-      const prevMessages = messages;
+      setMessages((prev) => {
+        if (existingUserMsgId) {
+          return prev.map((m) =>
+            m.id === existingUserMsgId ? { ...m, failed: false } : m
+          );
+        }
+        return [...prev, userMsg];
+      });
 
-      setMessages((prev) => [...prev, userMsg]);
       setInput("");
       setIsTyping(true);
       setHasStartedReceiving(false);
@@ -176,17 +197,20 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
       let succeeded = false;
       let finalAssistantContent = "";
 
+      const historySnapshot = messages
+        .filter((m) => !m.failed)
+        .slice(-10)
+        .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) }));
+
       try {
         const response = await fetch("/api/ai", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           signal: controller.signal,
           body: JSON.stringify({
-            userMessage: trimmed,
+            userMessage: text,
             category,
-            history: prevMessages
-              .slice(-10)
-              .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) })),
+            history: historySnapshot,
           }),
         });
 
@@ -211,8 +235,11 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
         if (finalAssistantContent.trim().length > 0) succeeded = true;
       } catch (err: any) {
         if (err?.name !== "AbortError") {
-          showError("Sorry, something went wrong. Please try again.");
-          setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
+          setMessages((prev) =>
+            prev
+              .map((m) => (m.id === userMsgId ? { ...m, failed: true } : m))
+              .filter((m) => m.id !== assistantMsgId)
+          );
         } else {
           setMessages((prev) =>
             prev
@@ -240,7 +267,7 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           fetch("/api/chat/title", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ sessionId, firstUserMessage: trimmed }),
+            body: JSON.stringify({ sessionId, firstUserMessage: text }),
           })
             .then((res) => res.json())
             .then(({ title }) => {
@@ -258,7 +285,24 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
         }
       }
     },
-    [isTyping, session, category, messages, sessionId, onSessionSaved, persistMessages]
+    [isTyping, session, category, messages, sessionId, onSessionSaved, persistMessages, hasStartedReceiving]
+  );
+
+  const sendMessage = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || isTyping || trimmed.length > MAX_CHARS) return;
+      await executeSend(trimmed);
+    },
+    [isTyping, executeSend]
+  );
+
+  const retryMessage = useCallback(
+    async (failedMsg: Message) => {
+      if (isTyping) return;
+      await executeSend(failedMsg.content, failedMsg.id);
+    },
+    [isTyping, executeSend]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -341,7 +385,36 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           <ChatMessage key="greeting" message={greetingMessage} />
 
           {messages.map((msg) => {
+            // Hide empty assistant placeholder while streaming
             if (msg.role === "assistant" && msg.content === "" && isTyping) return null;
+
+            if (msg.failed) {
+              return (
+                <div key={msg.id} className="flex flex-row-reverse items-end gap-3">
+                  <div className="max-w-[85%] flex flex-col items-end gap-1.5">
+                    {/* Original message bubble */}
+                    <div className="rounded-2xl rounded-br-sm px-4 py-3 text-sm leading-relaxed bg-gray-800/60 text-foreground/60 border border-destructive/20">
+                      <p>{msg.content}</p>
+                    </div>
+                    {/* Error row */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-destructive/80">
+                        Failed to send
+                      </span>
+                      <button
+                        onClick={() => retryMessage(msg)}
+                        disabled={isTyping}
+                        className="flex items-center gap-1 text-[11px] font-medium text-primary hover:text-primary/80 disabled:opacity-40 disabled:cursor-not-allowed transition-colors px-2 py-0.5 rounded-full border border-primary/30 hover:bg-primary/10"
+                      >
+                        <MdRefresh className="size-3" />
+                        Retry
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
             return <ChatMessage key={msg.id} message={msg} />;
           })}
 
