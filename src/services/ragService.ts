@@ -71,8 +71,8 @@ const llmWithFallback = primaryLlm.withFallbacks([fallbackLlm]);
 
 declare global {
   var _cachedVectorStore: MongoDBAtlasVectorSearch | undefined;
-  // Per-category chain cache — keyed by CategoryType
-  var _cachedChains: Partial<Record<CategoryType, RunnableSequence>> | undefined;
+  // Per-category chain cache — keyed by `${category}:${mode}`
+  var _cachedChains: Record<string, RunnableSequence> | undefined;
 }
 // ── Vector store (shared across categories) ───────────────────────────────────
 
@@ -128,12 +128,15 @@ function getRetriever(category: CategoryType) {
   };
 }
 
-async function getChain(category: CategoryType): Promise<RunnableSequence> {
+type LlmMode = "primary" | "fallback";
+
+async function getChain(category: CategoryType, llmMode: LlmMode): Promise<RunnableSequence> {
   if (!global._cachedChains) global._cachedChains = {};
-  if (global._cachedChains[category]) return global._cachedChains[category]!;
+
+  const cacheKey = `${category}:${llmMode}`;
+  if (global._cachedChains[cacheKey]) return global._cachedChains[cacheKey]!;
 
   const retriever = getRetriever(category);
-  const { persona } = CATEGORY_CONFIG[category];
 
   const prompt = PromptTemplate.fromTemplate(`
 {persona}
@@ -150,7 +153,9 @@ Chat History:
 User: {question}
 Assistant:`);
 
-  global._cachedChains[category] = RunnableSequence.from([
+  const model = llmMode === "fallback" ? fallbackLlm : llmWithFallback;
+
+  global._cachedChains[cacheKey] = RunnableSequence.from([
     {
       context: async (input: {
         question: string;
@@ -170,11 +175,11 @@ Assistant:`);
         input.persona,
     },
     prompt,
-    llmWithFallback,
+    model,
     new StringOutputParser(),
   ]);
 
-  return global._cachedChains[category]!;
+  return global._cachedChains[cacheKey]!;
 }
 
 export async function ingestKnowledgeBase() {
@@ -210,25 +215,90 @@ export async function ingestKnowledgeBase() {
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
 
+function getRetryDelayMs(error: any): number | undefined {
+  const retryInfo = error?.errorDetails?.find(
+    (detail: any) => detail?.["@type"] === "type.googleapis.com/google.rpc.RetryInfo"
+  );
+
+  const retryDelay = retryInfo?.retryDelay;
+  if (typeof retryDelay === "string") {
+    const retryMatch = retryDelay.match(/([\d.]+)s/i);
+    if (retryMatch) {
+      return Math.ceil(Number(retryMatch[1]) * 1000);
+    }
+  }
+
+  if (typeof error?.message === "string") {
+    const messageMatch = error.message.match(/Please retry in\s+([\d.]+)s/i);
+    if (messageMatch) {
+      return Math.ceil(Number(messageMatch[1]) * 1000);
+    }
+  }
+
+  return undefined;
+}
+
+function isQuotaExceeded(error: any): boolean {
+  if (error?.status !== 429) return false;
+
+  const message = String(error?.message || "").toLowerCase();
+  if (message.includes("quota exceeded")) return true;
+
+  const quotaFailure = error?.errorDetails?.find(
+    (detail: any) => detail?.["@type"] === "type.googleapis.com/google.rpc.QuotaFailure"
+  );
+
+  return Boolean(quotaFailure);
+}
+
+function isRetryableError(error: any): boolean {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    error?.status === 503 ||
+    error?.status === 429 ||
+    message.includes("503") ||
+    message.includes("failed to parse stream") ||
+    message.includes("fetch failed") ||
+    message.includes("high demand")
+  );
+}
+
+function getFriendlyFallbackMessage(error: any): string {
+  const retryDelayMs = getRetryDelayMs(error);
+
+  if (isQuotaExceeded(error)) {
+    const waitHint =
+      typeof retryDelayMs === "number"
+        ? ` Please wait about ${Math.max(1, Math.ceil(retryDelayMs / 1000))} seconds and try again.`
+        : " Please try again in a little while.";
+
+    return `I'm currently hitting AI provider quota limits.${waitHint}`;
+  }
+
+  return "I ran into a temporary AI service issue while generating this reply. Please try again shortly.";
+}
+
 async function streamWithRetry(
   question: string,
   chatHistory: string,
   category: CategoryType,
-  attempt = 0
+  attempt = 0,
+  llmMode: LlmMode = "primary"
 ): Promise<ReadableStream> {
   const { persona } = CATEGORY_CONFIG[category];
-
-  if (attempt > 0 && global._cachedChains) {
-    delete global._cachedChains[category];
-  }
-
-  const chain = await getChain(category);
-  const langchainStream = await chain.stream({ question, chatHistory, persona });
   const encoder = new TextEncoder();
 
   return new ReadableStream({
     async start(controller) {
       try {
+        const cacheKey = `${category}:${llmMode}`;
+        if (attempt > 0 && global._cachedChains) {
+          delete global._cachedChains[cacheKey];
+        }
+
+        const chain = await getChain(category, llmMode);
+        const langchainStream = await chain.stream({ question, chatHistory, persona });
+
         for await (const chunk of langchainStream) {
           if (chunk) {
             controller.enqueue(encoder.encode(typeof chunk === "string" ? chunk : String(chunk)));
@@ -236,34 +306,64 @@ async function streamWithRetry(
         }
         controller.close();
       } catch (error: any) {
-        const isRetryable =
-          error?.status === 503 ||
-          error?.status === 429 ||
-          error?.message?.includes("503") ||
-          error?.message?.includes("Failed to parse stream") ||
-          error?.message?.includes("fetch failed") ||
-          error?.message?.includes("high demand");
+        const quotaExceeded = isQuotaExceeded(error);
+        const isRetryable = isRetryableError(error);
+        const providerRetryDelay = getRetryDelayMs(error);
+        const waitMs = providerRetryDelay ?? RETRY_DELAY_MS * (attempt + 1);
 
-        if (isRetryable && attempt < MAX_RETRIES) {
-          console.warn(`Gemini stream error (attempt ${attempt + 1}/${MAX_RETRIES}), retrying...`);
-          await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+        if (quotaExceeded && llmMode === "primary" && attempt < MAX_RETRIES) {
+          console.warn("Primary Gemini quota exceeded, switching to fallback model...");
 
           try {
-            // Get a fresh stream from the retry attempt
-            const retryStream = await streamWithRetry(question, chatHistory, category, attempt + 1);
+            const retryStream = await streamWithRetry(
+              question,
+              chatHistory,
+              category,
+              attempt + 1,
+              "fallback"
+            );
+
             const reader = retryStream.getReader();
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
-              controller.enqueue(value); // controller is still open here
+              controller.enqueue(value);
+            }
+            controller.close();
+            return;
+          } catch (retryError) {
+            controller.error(retryError);
+            return;
+          }
+        }
+
+        if (isRetryable && attempt < MAX_RETRIES) {
+          console.warn(`Gemini stream error (attempt ${attempt + 1}/${MAX_RETRIES}), retrying...`);
+          await new Promise((r) => setTimeout(r, waitMs));
+
+          try {
+            const retryStream = await streamWithRetry(
+              question,
+              chatHistory,
+              category,
+              attempt + 1,
+              llmMode
+            );
+            const reader = retryStream.getReader();
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              controller.enqueue(value);
             }
             controller.close();
           } catch (retryError) {
-            controller.error(retryError);
+            controller.enqueue(encoder.encode(getFriendlyFallbackMessage(retryError)));
+            controller.close();
           }
         } else {
           console.error("Gemini stream failed after retries:", error);
-          controller.error(error);
+          controller.enqueue(encoder.encode(getFriendlyFallbackMessage(error)));
+          controller.close();
         }
       }
     },

@@ -52,6 +52,21 @@ const normalizeMessages = (msgs: any[]): Message[] =>
 const withoutGreeting = (msgs: Message[]) => msgs.filter((m) => m.id !== "greeting");
 const withoutFailed = (msgs: Message[]) => msgs.filter((m) => !m.failed);
 
+const getApiErrorMessage = async (response: Response): Promise<string> => {
+  const fallbackMessage = `API error: ${response.status}`;
+
+  try {
+    const data = await response.json();
+    if (typeof data?.error === "string" && data.error.trim().length > 0) {
+      return data.error;
+    }
+  } catch {
+    // Ignore JSON parse errors and use fallback status text.
+  }
+
+  return fallbackMessage;
+};
+
 export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: ChatWindowProps) {
   const [greetingContent, setGreetingContent] = useState<string>(
     () => GREETINGS[category] ?? GREETINGS.all
@@ -214,7 +229,14 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
           }),
         });
 
-        if (!response.ok || !response.body) throw new Error(`API error: ${response.status}`);
+        if (!response.ok) {
+          const errorMessage = await getApiErrorMessage(response);
+          throw new Error(errorMessage);
+        }
+
+        if (!response.body) {
+          throw new Error("Empty response from AI service.");
+        }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
@@ -235,6 +257,12 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
         if (finalAssistantContent.trim().length > 0) succeeded = true;
       } catch (err: any) {
         if (err?.name !== "AbortError") {
+          const errorMessage =
+            typeof err?.message === "string" && err.message.trim().length > 0
+              ? err.message
+              : "Failed to send message. Please try again.";
+          showError(errorMessage);
+
           setMessages((prev) =>
             prev
               .map((m) => (m.id === userMsgId ? { ...m, failed: true } : m))
@@ -285,7 +313,17 @@ export function ChatWindow({ sessionId, category, onNewChat, onSessionSaved }: C
         }
       }
     },
-    [isTyping, session, category, messages, sessionId, onSessionSaved, persistMessages, hasStartedReceiving]
+    [
+      isTyping,
+      session,
+      category,
+      messages,
+      sessionId,
+      onSessionSaved,
+      persistMessages,
+      hasStartedReceiving,
+      showError,
+    ]
   );
 
   const sendMessage = useCallback(
