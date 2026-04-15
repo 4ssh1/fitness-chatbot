@@ -55,7 +55,7 @@ const primaryLlm = new ChatGoogleGenerativeAI({
   apiKey: process.env.GEMINI_API_KEY,
   temperature: 0.7,
   maxRetries: 0,
-  maxOutputTokens: 250
+  maxOutputTokens: 1024
 });
 
 const fallbackLlm = new ChatGoogleGenerativeAI({
