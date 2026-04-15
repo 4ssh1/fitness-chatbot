@@ -7,6 +7,8 @@ GbeBody AI is a Nigerian-context fitness assistant built with Next.js, LangChain
 ![Gemini](https://img.shields.io/badge/Gemini-8E75B2?style=for-the-badge&logo=google&logoColor=white)
 ![MongoDB](https://img.shields.io/badge/MongoDB%20(%2BVector%20Search)-47A248?style=for-the-badge&logo=mongodb&logoColor=white)
 ![Upstash](https://img.shields.io/badge/Upstash-00C7B7?style=for-the-badge&logo=upstash&logoColor=white)
+![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)
+
 ## Core Features
 
 - Streaming AI responses using `ReadableStream` from `/api/ai`
