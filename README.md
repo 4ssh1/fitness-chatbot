@@ -9,6 +9,12 @@ GbeBody AI is a Nigerian-context fitness assistant built with Next.js, LangChain
 ![Upstash](https://img.shields.io/badge/Upstash-00C7B7?style=for-the-badge&logo=upstash&logoColor=white)
 ![LangChain](https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)
 
+---
+
+<img width="1920" height="948" alt="screencapture-chatbot-fitness-vercel-app-chat-2026-04-16-12_41_36" src="https://github.com/user-attachments/assets/039274f7-b476-48bd-a56f-fc896a33a5ec" />
+
+---
+
 ## Core Features
 
 - Streaming AI responses using `ReadableStream` from `/api/ai`
