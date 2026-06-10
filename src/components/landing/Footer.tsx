@@ -26,7 +26,7 @@ export function Footer() {
           </div>
           <div className="flex gap-4 text-2xl">
             <a
-              href="#"
+              href="https://github.com/4ssh1/fitness-chatbot"
               className="hover:scale-110 transition-transform"
               aria-label="GitHub"
             >
